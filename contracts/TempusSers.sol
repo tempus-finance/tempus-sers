@@ -27,13 +27,13 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// Total supply of sers.
     uint256 public constant MAX_SUPPLY = 11111;
 
-    bytes32 private constant CLAIMSER_TYPEHASH = keccak256("ClaimSer(address recipient, uint256 ticketId)");
+    bytes32 private constant CLAIMSER_TYPEHASH = keccak256("ClaimSer(address recipient, uint256 nonce)");
 
     /// The base URI for the collection.
     string public baseTokenURI;
 
-    /// The map of tickets which have been claimed already.
-    mapping(uint256 => bool) public claimedTickets;
+    /// The map of used redemption nonces.
+    mapping(uint256 => bool) public nonces;
 
     /// The original minter of a given token.
     mapping(uint256 => address) public originalMinter;
@@ -42,19 +42,18 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         baseTokenURI = _baseTokenURI;
     }
 
-    function redeemTicket(address recipient, uint256 ticketId, bytes memory signature) external {
-        // This is a short-cut for avoiding double claiming tickets.
-        require(claimedTickets[ticketId] == false, "TempusSer: Ticket already claimed");
+    function redeemTicket(address recipient, uint256 nonce, bytes memory signature) external {
+        require(nonces[nonce] == false, "TempusSer: Claim already used");
 
         // Check validity of claim
         bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(
             CLAIMSER_TYPEHASH,
             recipient,
-            ticketId
+            nonce
         )));
         require(SignatureChecker.isValidSignatureNow(owner(), digest, signature), "TempusSers: Invalid signature");
 
-        claimedTickets[ticketId] = true;
+        nonces[nonce] = true;
 
         uint256 tokenId = findNextToken(recipient);
         assert(tokenId < MAX_SUPPLY);

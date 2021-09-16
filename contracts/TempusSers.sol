@@ -27,13 +27,10 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// Total supply of sers.
     uint256 public constant MAX_SUPPLY = 11111;
 
-    bytes32 private constant CLAIMSER_TYPEHASH = keccak256("ClaimSer(address recipient, uint256 ticketId, uint256 tokenId, uint256 rarity)");
+    bytes32 private constant CLAIMSER_TYPEHASH = keccak256("ClaimSer(address recipient, uint256 ticketId)");
 
     /// The base URI for the collection.
     string public baseTokenURI;
-
-    /// The seed used for the shuffling.
-    uint32 public shuffleSeed;
 
     /// The map of tickets which have been claimed already.
     mapping(uint256 => bool) public claimedTickets;
@@ -41,75 +38,52 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// The original minter of a given token.
     mapping(uint256 => address) public originalMinter;
 
-    /// The rarity of the given token.
-    mapping(uint256 => uint256) public rarity;
-
     constructor(string memory _baseTokenURI) ERC721("Tempus Sers", "SERS") EIP712("Tempus Sers", "1") {
         baseTokenURI = _baseTokenURI;
     }
 
-    function setSeed() external onlyOwner {
-        require(shuffleSeed == 0, "TempusSers: Seed already set");
-
-        // TODO: set it with proper source of randomness
-        shuffleSeed = uint32(uint256(blockhash(0)));
-    }
-
-    function redeemTicket(address recipient, uint256 ticketId, uint256 tokenId, uint256 rarityScore, bytes memory signature) external {
+    function redeemTicket(address recipient, uint256 ticketId, bytes memory signature) external {
         // This is a short-cut for avoiding double claiming tickets.
         require(claimedTickets[ticketId] == false, "TempusSer: Ticket already claimed");
-        require(ticketId < MAX_SUPPLY, "TempusSer: Invalid ticket id");
-        require(rarityScore < type(uint8).max, "TempusSer: Invalid rarity score");
 
         // Check validity of claim
         bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(
             CLAIMSER_TYPEHASH,
             recipient,
-            ticketId,
-            tokenId,
-            rarityScore
+            ticketId
         )));
         require(SignatureChecker.isValidSignatureNow(owner(), digest, signature), "TempusSers: Invalid signature");
 
-        // Claim ticket.
         claimedTickets[ticketId] = true;
 
-        // Sanity check.
-        require(tokenId == ticketToTokenId(ticketId));
+        uint256 tokenId = findNextToken(recipient);
+        assert(tokenId < MAX_SUPPLY);
 
-        _mintToUser(recipient, tokenId, rarityScore);
+        _mintToUser(recipient, tokenId);
     }
 
-    function _mintToUser(address recipient, uint256 tokenId, uint256 rarityScore) private {
+    function _mintToUser(address recipient, uint256 tokenId) private {
+        // Sanity check
         assert(totalSupply() < MAX_SUPPLY);
 
         // Mark who was the original owner
         originalMinter[tokenId] = recipient;
 
-        // Store rarity
-        rarity[tokenId] = rarityScore;
-
         _safeMint(recipient, tokenId);
     }
 
+    function findNextToken(address recipient) private view returns (uint256 tokenId) {
+        do {
+            tokenId = uint256(keccak256(abi.encode(tokenId, recipient))) % MAX_SUPPLY;
+        } while (_exists(tokenId));
+    }
+
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        // ifpfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/1_r33.json2
+        // ifpfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/1.json2
         return string(bytes.concat(
             bytes(baseTokenURI),
             bytes(Strings.toString(tokenId)),
-            bytes("_r"),
-            bytes(Strings.toString(rarity[tokenId])),
             bytes(".json")
         ));
-    }
-
-    function ticketToTokenId(uint256 ticketId) public view returns (uint256) {
-        require(shuffleSeed != 0, "TempusSers: Seed not set yet");
-        return uint256(shuffle(SafeCast.toUint32(ticketId), uint32(MAX_SUPPLY), shuffleSeed));
-    }
-
-    function shuffle(uint32 i, uint32 l, uint32 s) private pure returns (uint32) {
-        // TODO: use the proper algorithm
-        return (i ^ l ^ s) % l;
     }
 }

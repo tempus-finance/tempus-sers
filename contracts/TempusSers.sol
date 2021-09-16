@@ -72,9 +72,11 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         _safeMint(recipient, tokenId);
     }
 
+    /// This function tries to find an unassigned token
     function findNextToken(address recipient) private view returns (uint256 tokenId) {
+        bytes memory fixedPortion = abi.encode(block.number, recipient, recipient.balance);
         do {
-            tokenId = uint256(keccak256(abi.encode(tokenId, recipient))) % MAX_SUPPLY;
+            tokenId = uint256(keccak256(abi.encode(tokenId, fixedPortion))) % MAX_SUPPLY;
         } while (_exists(tokenId));
     }
 

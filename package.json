@@ -1,0 +1,27 @@
+{
+  "private": true,
+  "name": "tempus-sers",
+  "description": "Tempus Sers NFT",
+  "version": "0.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tempus-finance/tempus-sers.git"
+  },
+  "keywords": [],
+  "author": "Tempus",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/tempus-finance/tempus-sers/issues"
+  },
+  "homepage": "https://github.com/tempus-finance/tempus-sers#readme",
+  "devDependencies": {
+    "hardhat": "^2.6.4"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.3.2"
+  }
+}

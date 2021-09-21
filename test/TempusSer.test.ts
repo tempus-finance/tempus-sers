@@ -159,7 +159,7 @@ describe("Tempus Sers", async () => {
       const ticketId = 1;
       const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId)) - 1;
       expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId, tokenId, 50))).to.equal("Transaction reverted without a reason string");
+      (await expectRevert(redeemTicket(owner, user.address, ticketId, tokenId, 50))).to.equal("TempusSers: Invalid ticket/token pair");
       expect(await token.claimedTickets(ticketId)).to.equal(false);
       expect(await token.originalMinter(tokenId)).to.equal("0x0000000000000000000000000000000000000000");
       expect((await token.rarity(tokenId)).toString()).to.equal("0");
@@ -172,7 +172,7 @@ describe("Tempus Sers", async () => {
       expect(await token.claimedTickets(ticketId)).to.equal(false);
       await redeemTicket(owner, user.address, ticketId, tokenId, 50);
       expect(await token.claimedTickets(ticketId)).to.equal(true);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId, tokenId, 50))).to.equal("TempusSer: Ticket already claimed");
+      (await expectRevert(redeemTicket(owner, user.address, ticketId, tokenId, 50))).to.equal("TempusSers: Ticket already claimed");
       expect(await token.claimedTickets(ticketId)).to.equal(true);
     });
     it("Should fail with invalid rarity score", async () =>
@@ -181,7 +181,7 @@ describe("Tempus Sers", async () => {
       const ticketId = 1;
       const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
       expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId, tokenId, 300))).to.equal("TempusSer: Invalid rarity score");
+      (await expectRevert(redeemTicket(owner, user.address, ticketId, tokenId, 300))).to.equal("TempusSers: Invalid rarity score");
       expect(await token.claimedTickets(ticketId)).to.equal(false);
     });
     it("Should succeed with correct signature", async () =>

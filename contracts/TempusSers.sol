@@ -63,12 +63,12 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         require(!claimedTickets[ticketId], "TempusSers: Ticket already claimed");
         require(ticketId < MAX_SUPPLY, "TempusSer: Invalid ticket id");
 
+        // Claim ticket.
+        claimedTickets[ticketId] = true;
+
         // Check validity of claim
         bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(CLAIMSER_TYPEHASH, recipient, ticketId, tokenId)));
         require(SignatureChecker.isValidSignatureNow(owner(), digest, signature), "TempusSers: Invalid signature");
-
-        // Claim ticket.
-        claimedTickets[ticketId] = true;
 
         // Sanity check.
         require(tokenId == ticketToTokenId(ticketId), "TempusSers: Invalid ticket/token pair");

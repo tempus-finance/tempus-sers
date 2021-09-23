@@ -27,7 +27,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// Total supply of sers.
     uint256 public constant MAX_SUPPLY = 11111;
 
-    bytes32 private constant CLAIMSER_TYPEHASH = keccak256("ClaimSer(address recipient, uint256 ticketId, uint256 tokenId, uint256 rarity)");
+    bytes32 private constant CLAIMSER_TYPEHASH = keccak256("ClaimSer(address recipient,uint256 ticketId,uint256 tokenId,uint256 rarity)");
 
     /// The base URI for the collection.
     string public baseTokenURI;
@@ -57,9 +57,9 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
 
     function redeemTicket(address recipient, uint256 ticketId, uint256 tokenId, uint256 rarityScore, bytes memory signature) external {
         // This is a short-cut for avoiding double claiming tickets.
-        require(claimedTickets[ticketId] == false, "TempusSer: Ticket already claimed");
+        require(!claimedTickets[ticketId], "TempusSers: Ticket already claimed");
         require(ticketId < MAX_SUPPLY, "TempusSer: Invalid ticket id");
-        require(rarityScore < type(uint8).max, "TempusSer: Invalid rarity score");
+        require(rarityScore < type(uint8).max, "TempusSers: Invalid rarity score");
 
         // Check validity of claim
         bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(
@@ -75,7 +75,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         claimedTickets[ticketId] = true;
 
         // Sanity check.
-        require(tokenId == ticketToTokenId(ticketId));
+        require(tokenId == ticketToTokenId(ticketId), "TempusSers: Invalid ticket/token pair");
 
         _mintToUser(recipient, tokenId, rarityScore);
     }

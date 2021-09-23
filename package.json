@@ -46,6 +46,9 @@
   },
   "scripts": {
     "build": "npx hardhat compile",
+    "lint": "prettier --write \"contracts/**/*.sol\"",
+    "lint-check": "prettier --check \"contracts/**/*.sol\"",
+    "solhint": "solhint \"contracts/**/*.sol\"",
     "test": "npx hardhat test test/*.ts"
   }
 }

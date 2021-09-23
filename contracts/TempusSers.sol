@@ -28,7 +28,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     uint256 public constant MAX_SUPPLY = 11111;
 
     bytes32 private constant CLAIMSER_TYPEHASH =
-        keccak256("ClaimSer(address recipient,uint256 ticketId,uint256 tokenId,uint256 rarity)");
+        keccak256("ClaimSer(address recipient,uint256 ticketId,uint256 tokenId)");
 
     /// The base URI for the collection.
     string public baseTokenURI;
@@ -41,9 +41,6 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
 
     /// The original minter of a given token.
     mapping(uint256 => address) public originalMinter;
-
-    /// The rarity of the given token.
-    mapping(uint256 => uint256) public rarity;
 
     constructor(string memory _baseTokenURI) ERC721("Tempus Sers", "SERS") EIP712("Tempus Sers", "1") {
         baseTokenURI = _baseTokenURI;
@@ -60,18 +57,14 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         address recipient,
         uint256 ticketId,
         uint256 tokenId,
-        uint256 rarityScore,
         bytes memory signature
     ) external {
         // This is a short-cut for avoiding double claiming tickets.
         require(!claimedTickets[ticketId], "TempusSers: Ticket already claimed");
         require(ticketId < MAX_SUPPLY, "TempusSer: Invalid ticket id");
-        require(rarityScore < type(uint8).max, "TempusSers: Invalid rarity score");
 
         // Check validity of claim
-        bytes32 digest = _hashTypedDataV4(
-            keccak256(abi.encode(CLAIMSER_TYPEHASH, recipient, ticketId, tokenId, rarityScore))
-        );
+        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(CLAIMSER_TYPEHASH, recipient, ticketId, tokenId)));
         require(SignatureChecker.isValidSignatureNow(owner(), digest, signature), "TempusSers: Invalid signature");
 
         // Claim ticket.
@@ -80,37 +73,21 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         // Sanity check.
         require(tokenId == ticketToTokenId(ticketId), "TempusSers: Invalid ticket/token pair");
 
-        _mintToUser(recipient, tokenId, rarityScore);
+        _mintToUser(recipient, tokenId);
     }
 
-    function _mintToUser(
-        address recipient,
-        uint256 tokenId,
-        uint256 rarityScore
-    ) private {
+    function _mintToUser(address recipient, uint256 tokenId) private {
         assert(totalSupply() < MAX_SUPPLY);
 
         // Mark who was the original owner
         originalMinter[tokenId] = recipient;
 
-        // Store rarity
-        rarity[tokenId] = rarityScore;
-
         _safeMint(recipient, tokenId);
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        // ifpfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/1_r33.json2
-        return
-            string(
-                bytes.concat(
-                    bytes(baseTokenURI),
-                    bytes(Strings.toString(tokenId)),
-                    bytes("_r"),
-                    bytes(Strings.toString(rarity[tokenId])),
-                    bytes(".json")
-                )
-            );
+        // ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/1.json
+        return string(bytes.concat(bytes(baseTokenURI), bytes(Strings.toString(tokenId)), bytes(".json")));
     }
 
     function ticketToTokenId(uint256 ticketId) public view returns (uint256) {

@@ -64,30 +64,7 @@ describe("Tempus Sers", async () => {
     it("Should set initial properties", async () =>
     {
       expect((await token.MAX_SUPPLY()).toString()).to.equal("11111");
-      expect(await token.shuffleSeed()).to.equal(0);
       expect(await token.baseTokenURI()).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
-    });
-  });
-
-  describe("Seed and shuffle", async () =>
-  {
-    it("Should allow to set seed once", async () =>
-    {
-      await token.setSeed();
-      // Can't actually the seed due to blockchain differs between runs
-      // expect(await token.shuffelSeed()).to.equal(...)
-      (await expectRevert(token.setSeed())).to.equal("TempusSers: Seed already set");
-    });
-    it("Should not allow to shuffle before seed is set", async () =>
-    {
-      (await expectRevert(token.ticketToTokenId(BigNumber.from(1)))).to.equal("TempusSers: Seed not set yet");
-    });
-    it("Should allow to shuffle after seed is set", async () =>
-    {
-      await token.setSeed();
-      // Can't actually check the value due to the seed (blockhash) differs between runs
-      // expect((await token.ticketToTokenId(BigNumber.from(1))).toString()).to.equal("8984");
-      await token.ticketToTokenId(BigNumber.from(1));
     });
   });
 
@@ -95,7 +72,7 @@ describe("Tempus Sers", async () => {
   {
     it("Should fail with short signature", async () =>
     {
-      (await expectRevert(token.redeemTicket(user.address, 1, 5, 0, 0))).to.equal("TempusSers: Invalid signature");
+      (await expectRevert(token.redeemTicket(user.address, 1, 0))).to.equal("TempusSers: Invalid signature");
     });
     it("Should fail with invalid signature", async () =>
     {

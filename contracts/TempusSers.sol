@@ -27,7 +27,8 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// Total supply of sers.
     uint256 public constant MAX_SUPPLY = 11111;
 
-    bytes32 private constant CLAIMSER_TYPEHASH = keccak256("ClaimSer(address recipient,uint256 ticketId,uint256 tokenId,uint256 rarity)");
+    bytes32 private constant CLAIMSER_TYPEHASH =
+        keccak256("ClaimSer(address recipient,uint256 ticketId,uint256 tokenId,uint256 rarity)");
 
     /// The base URI for the collection.
     string public baseTokenURI;
@@ -55,20 +56,22 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         shuffleSeed = uint32(uint256(blockhash(0)));
     }
 
-    function redeemTicket(address recipient, uint256 ticketId, uint256 tokenId, uint256 rarityScore, bytes memory signature) external {
+    function redeemTicket(
+        address recipient,
+        uint256 ticketId,
+        uint256 tokenId,
+        uint256 rarityScore,
+        bytes memory signature
+    ) external {
         // This is a short-cut for avoiding double claiming tickets.
         require(!claimedTickets[ticketId], "TempusSers: Ticket already claimed");
         require(ticketId < MAX_SUPPLY, "TempusSer: Invalid ticket id");
         require(rarityScore < type(uint8).max, "TempusSers: Invalid rarity score");
 
         // Check validity of claim
-        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(
-            CLAIMSER_TYPEHASH,
-            recipient,
-            ticketId,
-            tokenId,
-            rarityScore
-        )));
+        bytes32 digest = _hashTypedDataV4(
+            keccak256(abi.encode(CLAIMSER_TYPEHASH, recipient, ticketId, tokenId, rarityScore))
+        );
         require(SignatureChecker.isValidSignatureNow(owner(), digest, signature), "TempusSers: Invalid signature");
 
         // Claim ticket.
@@ -80,7 +83,11 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         _mintToUser(recipient, tokenId, rarityScore);
     }
 
-    function _mintToUser(address recipient, uint256 tokenId, uint256 rarityScore) private {
+    function _mintToUser(
+        address recipient,
+        uint256 tokenId,
+        uint256 rarityScore
+    ) private {
         assert(totalSupply() < MAX_SUPPLY);
 
         // Mark who was the original owner
@@ -94,13 +101,16 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         // ifpfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/1_r33.json2
-        return string(bytes.concat(
-            bytes(baseTokenURI),
-            bytes(Strings.toString(tokenId)),
-            bytes("_r"),
-            bytes(Strings.toString(rarity[tokenId])),
-            bytes(".json")
-        ));
+        return
+            string(
+                bytes.concat(
+                    bytes(baseTokenURI),
+                    bytes(Strings.toString(tokenId)),
+                    bytes("_r"),
+                    bytes(Strings.toString(rarity[tokenId])),
+                    bytes(".json")
+                )
+            );
     }
 
     function ticketToTokenId(uint256 ticketId) public view returns (uint256) {
@@ -108,8 +118,12 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         return uint256(shuffle(SafeCast.toUint32(ticketId), uint32(MAX_SUPPLY), shuffleSeed));
     }
 
-    function shuffle(uint32 i, uint32 l, uint32 s) private pure returns (uint32) {
+    function shuffle(
+        uint32 idx,
+        uint32 len,
+        uint32 seed
+    ) private pure returns (uint32) {
         // TODO: use the proper algorithm
-        return (i ^ l ^ s) % l;
+        return (idx ^ len ^ seed) % len;
     }
 }

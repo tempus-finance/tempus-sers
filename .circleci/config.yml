@@ -15,7 +15,24 @@ jobs:
           name: "Run unit tests"
           command: yarn test
 
+  solhint:
+    executor:
+      name: node/default
+      tag: '16.0.0'
+    steps:
+      - checkout
+      - node/install-packages:
+          pkg-manager: yarn
+      - run:
+          name: "Run solhint and lint-check"
+          command: |
+            yarn solhint
+            yarn lint-check
+
 workflows:
   unit_tests:
     jobs:
       - unit_tests
+  solhint:
+    jobs:
+      - solhint

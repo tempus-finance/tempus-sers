@@ -1,6 +1,6 @@
 import { ethers } from "hardhat";
 import { expect, use } from "chai";
-import { BigNumber, Contract } from "ethers";
+import { BigNumber, Contract, utils } from "ethers";
 import * as signers from "@nomiclabs/hardhat-ethers/dist/src/signers";
 import { solidity } from "ethereum-waffle";
 
@@ -80,7 +80,7 @@ describe("Tempus Sers", async () => {
   beforeEach(async () => {
     [owner, user] = await ethers.getSigners();
     const TempusSers = await ethers.getContractFactory("TempusSers");
-    token = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+    token = await TempusSers.deploy(utils.id("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/"));
     await token.deployed();
   });
 
@@ -128,21 +128,48 @@ describe("Tempus Sers", async () => {
     {
       expect((await token.MAX_SUPPLY()).toString()).to.equal("3333");
       expect(await token.shuffleSeed()).to.equal(0);
+      expect(await token.baseTokenURI()).to.equal("");
+    });
+  });
+
+  describe("Token URI reveal", async () =>
+  {
+    it("Cannot reveal before seed is set", async () =>
+    {
+      (await expectRevert(token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/"))).to.equal("TempusSers: Seed not set yet");
+    });
+    it("Reveal first works", async () =>
+    {
+      await token.setSeed();
+      await token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
       expect(await token.baseTokenURI()).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     });
-
     it("Should sanitize base URI", async () =>
     {
       const TempusSers = await ethers.getContractFactory("TempusSers");
-      let token2 = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs");
+      let token2 = await TempusSers.deploy(utils.id("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs"));
       await token2.deployed();
+      await token2.setSeed();
+      await token2.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs");
       expect(await token2.baseTokenURI()).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     });
 
     it("Should fail on empy base URI", async () =>
     {
       const TempusSers = await ethers.getContractFactory("TempusSers");
-      (await expectRevert(TempusSers.deploy(""))).to.equal("TempusSers: URI cannot be empty");
+      (await expectRevert(TempusSers.deploy("0x0000000000000000000000000000000000000000000000000000000000000000"))).to.equal("TempusSers: URI cannot be empty");
+      (await expectRevert(TempusSers.deploy(utils.id("")))).to.equal("TempusSers: URI cannot be empty");
+    });
+    it("Cannot reveal multiple times", async () =>
+    {
+      await token.setSeed();
+      await token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      (await expectRevert(token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/"))).to.equal("TempusSers: Collection already revealed");
+    });
+    it("Cannot reveal with mismatching URI", async () =>
+    {
+      await token.setSeed();
+      (await expectRevert(token.reveal("ipfs://wrongurl.com/"))).to.equal("TempusSers: Commitment mismatch");
     });
   });
 
@@ -183,6 +210,9 @@ describe("Tempus Sers", async () => {
   {
     it("Should fail with short signature", async () =>
     {
+      await token.setSeed();
+      await token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+
       const ticketId = 1;
       const tokenId = 5;
       expect(await token.claimedTickets(ticketId)).to.equal(false);
@@ -192,6 +222,9 @@ describe("Tempus Sers", async () => {
     });
     it("Should fail with invalid signature", async () =>
     {
+      await token.setSeed();
+      await token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+
       const sig = "0x161c1cce058d3862a7ca0c331729d7b181d282be5c546a122f4eeab0c285aa072f81d40bb17a1504590ca524840498804554b7c907a8493674f968d20dcf7d421c";
       const ticketId = 1;
       const tokenId = 5;
@@ -200,18 +233,34 @@ describe("Tempus Sers", async () => {
       expect(await token.claimedTickets(ticketId)).to.equal(false);
       expect(await token.originalMinter(tokenId)).to.equal("0x0000000000000000000000000000000000000000");
     });
-    it("Should fail before seed is set", async () =>
+    it("Should fail before seed", async () =>
     {
+      // Skip both seed and reveal here.
+
       const ticketId = 1;
       const tokenId = 0; // Can't use ticketToTokenId here and this will be wrong anyway
       expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId))).to.equal("TempusSers: Seed not set yet");
+      (await expectRevert(redeemTicket(owner, user.address, ticketId))).to.equal("TempusSers: Collection not revealed yet");
+      expect(await token.claimedTickets(ticketId)).to.equal(false);
+      expect(await token.originalMinter(tokenId)).to.equal("0x0000000000000000000000000000000000000000");
+    });
+    it("Should fail before reveal", async () =>
+    {
+      await token.setSeed();
+      // Skip reveal here.
+
+      const ticketId = 1;
+      const tokenId = 0; // Can't use ticketToTokenId here and this will be wrong anyway
+      expect(await token.claimedTickets(ticketId)).to.equal(false);
+      (await expectRevert(redeemTicket(owner, user.address, ticketId))).to.equal("TempusSers: Collection not revealed yet");
       expect(await token.claimedTickets(ticketId)).to.equal(false);
       expect(await token.originalMinter(tokenId)).to.equal("0x0000000000000000000000000000000000000000");
     });
     it("Should fail redeeming twice", async () =>
     {
       await token.setSeed();
+      await token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+
       const ticketId = 1;
       const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
       expect(await token.claimedTickets(ticketId)).to.equal(false);
@@ -223,6 +272,8 @@ describe("Tempus Sers", async () => {
     it("Should succeed with correct signature", async () =>
     {
       await token.setSeed();
+      await token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+
       const ticketId = 1;
       const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
       const tokenURI = (await token.baseTokenURI()) + tokenId + ".json";

@@ -37,6 +37,9 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// The base URI for the collection.
     string public baseTokenURI;
 
+    /// The commitment to the base URI.
+    bytes32 public baseTokenURICommitment;
+
     /// The seed used for the shuffling.
     uint32 public shuffleSeed;
 
@@ -46,7 +49,20 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// The original minter of a given token.
     mapping(uint256 => address) public originalMinter;
 
-    constructor(string memory _baseTokenURI) ERC721("Tempus Sers", "SERS") EIP712("Tempus Sers", "1") {
+    constructor(bytes32 _baseTokenURICommitment) ERC721("Tempus Sers", "SERS") EIP712("Tempus Sers", "1") {
+        require(
+            (_baseTokenURICommitment != 0) && (_baseTokenURICommitment != keccak256("")),
+            "TempusSers: URI cannot be empty"
+        );
+
+        baseTokenURICommitment = _baseTokenURICommitment;
+    }
+
+    function reveal(string calldata _baseTokenURI) external onlyOwner {
+        require(shuffleSeed != 0, "TempusSers: Seed not set yet");
+        require(bytes(baseTokenURI).length == 0, "TempusSers: Collection already revealed");
+        require(keccak256(bytes(_baseTokenURI)) == baseTokenURICommitment, "TempusSers: Commitment mismatch");
+
         baseTokenURI = sanitizeBaseURI(_baseTokenURI);
     }
 
@@ -62,9 +78,11 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         uint256 ticketId,
         bytes memory signature
     ) external {
+        require(bytes(baseTokenURI).length != 0, "TempusSers: Collection not revealed yet");
+
         // This is a short-cut for avoiding double claiming tickets.
         require(!claimedTickets[ticketId], "TempusSers: Ticket already claimed");
-        require(ticketId < MAX_SUPPLY, "TempusSer: Invalid ticket id");
+        require(ticketId < MAX_SUPPLY, "TempusSers: Invalid ticket id");
 
         // Check validity of claim
         bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(CLAIMSER_TYPEHASH, recipient, ticketId)));
@@ -90,6 +108,8 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        require(bytes(baseTokenURI).length != 0, "TempusSers: Collection not revealed yet");
+
         // ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/1.json
         return string(bytes.concat(bytes(baseTokenURI), bytes(Strings.toString(tokenId)), bytes(".json")));
     }
@@ -102,9 +122,9 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// Sanitize the input URI so that it always end with a forward slash.
     ///
     /// Note that we assume the URI is ASCII, and we ignore the case of empty URI.
-    function sanitizeBaseURI(string memory uri) private view returns (string memory) {
+    function sanitizeBaseURI(string memory uri) private pure returns (string memory) {
         bytes memory tmp = bytes(uri);
-        require(tmp.length != 0, "TempusSers: URI cannot be empty");
+        assert(tmp.length != 0);
         if (tmp[tmp.length - 1] != "/") {
             return string(bytes.concat(tmp, "/"));
         }

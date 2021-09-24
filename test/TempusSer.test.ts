@@ -80,7 +80,7 @@ describe("Tempus Sers", async () => {
   beforeEach(async () => {
     [owner, user] = await ethers.getSigners();
     const TempusSers = await ethers.getContractFactory("TempusSers");
-    token = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+    token = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/", "0x0000000000000000000000000000000000000000");
     await token.deployed();
   });
 

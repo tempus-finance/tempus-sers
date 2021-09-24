@@ -22,6 +22,7 @@ import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import "@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
+import "./IRandomnessBeacon.sol";
 
 import "./Shuffle.sol";
 
@@ -33,6 +34,8 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     uint256 public constant MAX_SUPPLY = 11111;
 
     bytes32 private constant CLAIMSER_TYPEHASH = keccak256("ClaimSer(address recipient,uint256 ticketId)");
+
+    IRandomnessBeacon public immutable randomBeacon;
 
     /// The base URI for the collection.
     string public baseTokenURI;
@@ -46,15 +49,19 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// The original minter of a given token.
     mapping(uint256 => address) public originalMinter;
 
-    constructor(string memory _baseTokenURI) ERC721("Tempus Sers", "SERS") EIP712("Tempus Sers", "1") {
+    constructor(string memory _baseTokenURI, IRandomnessBeacon _randomBeacon)
+        ERC721("Tempus Sers", "SERS")
+        EIP712("Tempus Sers", "1")
+    {
         baseTokenURI = _baseTokenURI;
+        randomBeacon = _randomBeacon;
     }
 
     function setSeed() external onlyOwner {
         require(shuffleSeed == 0, "TempusSers: Seed already set");
 
-        // TODO: set it with proper source of randomness
-        shuffleSeed = uint32(uint256(blockhash(block.number - 1)));
+        // TODO check timestamp
+        shuffleSeed = uint32(randomBeacon.lastResult());
     }
 
     function redeemTicket(

@@ -98,11 +98,22 @@ describe("Tempus Sers", async () => {
 
   describe("Seed and shuffle", async () =>
   {
+    it("Ensure seed changes on setting", async () =>
+    {
+      // NOTE: The starting seed value is 0, and setSeed can be called
+      // as long as the seed is 0. In the case the "random" seed ends up
+      // being 0 again, that means setSeed can be called again.
+      //
+      // For testing purposes we assume the probability of this is low.
+      const prevSeed = await token.shuffleSeed();
+      expect(prevSeed).to.equal(0);
+      await token.setSeed();
+      expect(await token.shuffleSeed()).to.not.equal(prevSeed);
+    });
     it("Should allow to set seed once", async () =>
     {
+      // NOTE: The same conditions apply here as above.
       await token.setSeed();
-      // Can't actually the seed due to blockchain differs between runs
-      // expect(await token.shuffelSeed()).to.equal(...)
       (await expectRevert(token.setSeed())).to.equal("TempusSers: Seed already set");
     });
     it("Should not allow to shuffle before seed is set", async () =>

@@ -76,11 +76,27 @@ describe("Shuffle", async () => {
 describe("Tempus Sers", async () => {
   let owner:Signer, user:Signer;
   let token;
+  let randomnessBeacon;
 
   beforeEach(async () => {
     [owner, user] = await ethers.getSigners();
+
+/*
+    const RandomnessBeacon = await ethers.getContractFactory("RandomnessBeacon");
+    randomnessBeacon = await RandomnessBeacon.deploy(
+      "0xf0d54349aDdcf704F77AE15b96510dEA15cb7952",
+      "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+      "0xAA77729D3466CA35AE8D28B3BBAC7CC36A5031EFDC430821C02BC31A238AF445",
+      "2000000000000000000"
+    );
+*/
+    const RandomnessBeaconMock = await ethers.getContractFactory("RandomnessBeaconMock");
+    randomnessBeacon = await RandomnessBeaconMock.deploy();
+    await randomnessBeacon.deployed();
+    await randomnessBeacon.setResult("1234");
+
     const TempusSers = await ethers.getContractFactory("TempusSers");
-    token = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/", "0x0000000000000000000000000000000000000000");
+    token = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/", randomnessBeacon.address);
     await token.deployed();
   });
 

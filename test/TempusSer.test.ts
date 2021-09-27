@@ -1,7 +1,13 @@
 import { ethers } from "hardhat";
-import { expect } from "chai";
+import { expect, use } from "chai";
 import { BigNumber, Contract } from "ethers";
 import * as signers from "@nomiclabs/hardhat-ethers/dist/src/signers";
+import { solidity } from "ethereum-waffle";
+
+/**
+ * Insert helpers for event matching.
+ */
+use(solidity);
 
 export type Signer = signers.SignerWithAddress;
 export type SignerOrAddress = Signer|string;
@@ -218,7 +224,9 @@ describe("Tempus Sers", async () => {
       const ticketId = 1;
       const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
       expect(await token.claimedTickets(ticketId)).to.equal(false);
-      await redeemTicket(owner, user.address, ticketId, tokenId);
+      // Transfer(0, to, tokenId);
+      expect(await redeemTicket(owner, user.address, ticketId, tokenId))
+        .to.emit(token, "Transfer").withArgs("0x0000000000000000000000000000000000000000", user.address, tokenId);
       expect(await token.claimedTickets(ticketId)).to.equal(true);
       expect(await token.originalMinter(tokenId)).to.equal(user.address);
     });

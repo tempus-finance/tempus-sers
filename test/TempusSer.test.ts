@@ -46,6 +46,12 @@ describe("Tempus Sers", async () => {
     await token.deployed();
   });
 
+  /*
+   * This should follow the implementation from Solidity.
+   */
+  function shuffle(idx: number, len: number, seed: number): number {
+    return ((idx ^ len ^ seed) >>> 0) % len;
+  }
 
   async function redeemTicket(signer, recipient, ticketId, tokenId): Promise<void> {
     const domain = {
@@ -123,8 +129,10 @@ describe("Tempus Sers", async () => {
     it("Should allow to shuffle after seed is set", async () =>
     {
       await token.setSeed();
-      // Can't actually check the value due to the seed (blockhash) differs between runs
-      // expect((await token.ticketToTokenId(BigNumber.from(1))).toString()).to.equal("8984");
+      const MAX_SUPPLY = await token.MAX_SUPPLY();
+      const ticketId = 1;
+      const tokenId = shuffle(ticketId, MAX_SUPPLY, await token.shuffleSeed());
+      expect((await token.ticketToTokenId(BigNumber.from(1))).toString()).to.equal(tokenId.toString());
       await token.ticketToTokenId(BigNumber.from(1));
     });
   });

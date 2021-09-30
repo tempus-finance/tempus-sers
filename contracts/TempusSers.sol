@@ -72,10 +72,12 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         bytes memory signature
     ) external {
         address recipient = ENS.resolver(recipientEnsName).addr(recipientEnsName);
-        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(CLAIMSER_TYPEHASH_ENS, recipientEnsName, ticketId, tokenId)));
+        bytes32 digest = _hashTypedDataV4(
+            keccak256(abi.encode(CLAIMSER_TYPEHASH_ENS, recipientEnsName, ticketId, tokenId))
+        );
         _redeemTicket(recipient, ticketId, tokenId, digest, signature);
     }
-    
+
     function redeemTicket(
         address recipient,
         uint256 ticketId,

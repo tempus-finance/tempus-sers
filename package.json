@@ -26,6 +26,7 @@
     "coveralls": "^3.1.0",
     "cross-env": "^7.0.3",
     "dotenv": "^10.0.0",
+    "eth-ens-namehash": "^2.0.8",
     "ethereum-waffle": "^3.3.0",
     "ethers": "^5.4.1",
     "hardhat": "^2.2.1",
@@ -49,6 +50,7 @@
     "lint": "prettier --write \"contracts/**/*.sol\"",
     "lint-check": "prettier --check \"contracts/**/*.sol\"",
     "solhint": "solhint \"contracts/**/*.sol\"",
-    "test": "npx hardhat test test/*.ts"
+    "test": "npx hardhat test test/*.ts",
+    "test:integration": "cross-env HARDHAT_FORK=mainnet HARDHAT_FORK_NUMBER=13323768 npx hardhat test test/integration/*.test.ts"
   }
 }

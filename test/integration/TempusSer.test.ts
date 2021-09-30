@@ -1,15 +1,22 @@
-import { ethers } from "hardhat";
 import { expect } from "chai";
 import { BigNumber } from "ethers";
+import {
+  ethers,
+  getNamedAccounts
+} from 'hardhat';
+import * as NameHash from 'eth-ens-namehash';
 
-import { Signer, expectRevert } from "./utils";
+import { Signer, expectRevert } from "../utils";
 
+const TEST_ENS_NAME = NameHash.hash("elonmusk.eth");
 describe("Tempus Sers", async () => {
-  let owner:Signer, user:Signer;
+  let owner:Signer, user:Signer, elonMuskEnsNameOwner:Signer;
   let token;
 
   beforeEach(async () => {
     [owner, user] = await ethers.getSigners();
+    const { elonMuskEnsNameOwner: elonMuskEnsNameOwnerAccount } = await getNamedAccounts();
+    elonMuskEnsNameOwner = await ethers.getSigner(elonMuskEnsNameOwnerAccount);
     const TempusSers = await ethers.getContractFactory("TempusSers");
     token = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     await token.deployed();
@@ -40,6 +47,32 @@ describe("Tempus Sers", async () => {
 
     const signature = await signer._signTypedData(domain, types, value);
     return token.redeemTicket(recipient, ticketId, tokenId, signature);
+  };
+
+  async function redeemTicketToEnsName(signer, recipientEnsName, ticketId, tokenId): Promise<void> {
+    const domain = {
+      name: 'Tempus Sers',
+      version: '1',
+      chainId: await signer.getChainId(),
+      verifyingContract: token.address
+    };
+
+    const types = {
+      ClaimSer: [
+        { name: 'recipientEnsName', type: 'bytes32' },
+        { name: 'ticketId', type: 'uint256' },
+        { name: 'tokenId', type: 'uint256' }
+      ]
+    };
+
+    const value = {
+      recipientEnsName,
+      ticketId,
+      tokenId
+    };
+
+    const signature = await signer._signTypedData(domain, types, value);
+    return token.redeemTicketToEnsName(value.recipientEnsName, ticketId, tokenId, signature);
   };
 
   describe("Deploy", async () =>
@@ -168,6 +201,16 @@ describe("Tempus Sers", async () => {
       await redeemTicket(owner, user.address, ticketId, tokenId);
       expect(await token.claimedTickets(ticketId)).to.equal(true);
       expect(await token.originalMinter(tokenId)).to.equal(user.address);
+    });
+    it.only("Should succeed with correct signature (ENS name whitelisted)", async () =>
+    {
+      await token.setSeed();
+      const ticketId = 1;
+      const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
+      expect(await token.claimedTickets(ticketId)).to.equal(false);
+      await redeemTicketToEnsName(owner, TEST_ENS_NAME, ticketId, tokenId);
+      expect(await token.claimedTickets(ticketId)).to.equal(true);
+      expect(await token.originalMinter(tokenId)).to.equal(elonMuskEnsNameOwner.address);
     });
   });
 });

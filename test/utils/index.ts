@@ -31,3 +31,55 @@ export async function expectRevert(promise: Promise<any>): Promise<Chai.Assertio
     return expect(getRevertMessage(e));
   }
 }
+
+export async function redeemTicket(token, signer, recipient, ticketId, tokenId): Promise<void> {
+  const domain = {
+    name: 'Tempus Sers',
+    version: '1',
+    chainId: await signer.getChainId(),
+    verifyingContract: token.address
+  };
+
+  const types = {
+    ClaimSer: [
+      { name: 'recipient', type: 'address' },
+      { name: 'ticketId', type: 'uint256' },
+      { name: 'tokenId', type: 'uint256' }
+    ]
+  };
+
+  const value = {
+     recipient,
+     ticketId,
+     tokenId
+  };
+
+  const signature = await signer._signTypedData(domain, types, value);
+  return token.redeemTicket(recipient, ticketId, tokenId, signature);
+};
+
+export async function redeemTicketToEnsName(token, signer, recipientEnsName, ticketId, tokenId): Promise<void> {
+  const domain = {
+    name: 'Tempus Sers',
+    version: '1',
+    chainId: await signer.getChainId(),
+    verifyingContract: token.address
+  };
+
+  const types = {
+    ClaimSer: [
+      { name: 'recipientEnsName', type: 'bytes32' },
+      { name: 'ticketId', type: 'uint256' },
+      { name: 'tokenId', type: 'uint256' }
+    ]
+  };
+
+  const value = {
+    recipientEnsName,
+    ticketId,
+    tokenId
+  };
+
+  const signature = await signer._signTypedData(domain, types, value);
+  return token.redeemTicketToEnsName(value.recipientEnsName, ticketId, tokenId, signature);
+};

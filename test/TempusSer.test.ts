@@ -2,7 +2,7 @@ import { ethers } from "hardhat";
 import { expect } from "chai";
 import { BigNumber } from "ethers";
 
-import { Signer, expectRevert } from "./utils";
+import { Signer, expectRevert, redeemTicket } from "./utils";
 
 describe("Tempus Sers", async () => {
   let owner:Signer, user:Signer;
@@ -14,33 +14,6 @@ describe("Tempus Sers", async () => {
     token = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     await token.deployed();
   });
-
-
-  async function redeemTicket(signer, recipient, ticketId, tokenId): Promise<void> {
-    const domain = {
-      name: 'Tempus Sers',
-      version: '1',
-      chainId: await signer.getChainId(),
-      verifyingContract: token.address
-    };
-
-    const types = {
-      ClaimSer: [
-        { name: 'recipient', type: 'address' },
-        { name: 'ticketId', type: 'uint256' },
-        { name: 'tokenId', type: 'uint256' }
-      ]
-    };
-
-    const value = {
-       recipient,
-       ticketId,
-       tokenId
-    };
-
-    const signature = await signer._signTypedData(domain, types, value);
-    return token.redeemTicket(recipient, ticketId, tokenId, signature);
-  };
 
   describe("Deploy", async () =>
   {
@@ -124,7 +97,7 @@ describe("Tempus Sers", async () => {
       const ticketId = 1;
       const tokenId = 0; // Can't use ticketToTokenId here and this will be wrong anyway
       expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId, tokenId))).to.equal("TempusSers: Seed not set yet");
+      (await expectRevert(redeemTicket(token, owner, user.address, ticketId, tokenId))).to.equal("TempusSers: Seed not set yet");
       expect(await token.claimedTickets(ticketId)).to.equal(false);
       expect(await token.originalMinter(tokenId)).to.equal("0x0000000000000000000000000000000000000000");
     });
@@ -134,7 +107,7 @@ describe("Tempus Sers", async () => {
       const ticketId = 1;
       const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId)) - 1;
       expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId, tokenId))).to.equal("TempusSers: Invalid ticket/token pair");
+      (await expectRevert(redeemTicket(token, owner, user.address, ticketId, tokenId))).to.equal("TempusSers: Invalid ticket/token pair");
       expect(await token.claimedTickets(ticketId)).to.equal(false);
       expect(await token.originalMinter(tokenId)).to.equal("0x0000000000000000000000000000000000000000");
     });
@@ -144,9 +117,9 @@ describe("Tempus Sers", async () => {
       const ticketId = 1;
       const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
       expect(await token.claimedTickets(ticketId)).to.equal(false);
-      await redeemTicket(owner, user.address, ticketId, tokenId);
+      await redeemTicket(token, owner, user.address, ticketId, tokenId);
       expect(await token.claimedTickets(ticketId)).to.equal(true);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId, tokenId))).to.equal("TempusSers: Ticket already claimed");
+      (await expectRevert(redeemTicket(token, owner, user.address, ticketId, tokenId))).to.equal("TempusSers: Ticket already claimed");
       expect(await token.claimedTickets(ticketId)).to.equal(true);
     });
     it("Should succeed with correct signature (standard address whitelisted)", async () =>
@@ -155,17 +128,7 @@ describe("Tempus Sers", async () => {
       const ticketId = 1;
       const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
       expect(await token.claimedTickets(ticketId)).to.equal(false);
-      await redeemTicket(owner, user.address, ticketId, tokenId);
-      expect(await token.claimedTickets(ticketId)).to.equal(true);
-      expect(await token.originalMinter(tokenId)).to.equal(user.address);
-    });
-    it("Should succeed with correct signature (ENS name whitelisted)", async () =>
-    {
-      await token.setSeed();
-      const ticketId = 1;
-      const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      await redeemTicket(owner, user.address, ticketId, tokenId);
+      await redeemTicket(token, owner, user.address, ticketId, tokenId);
       expect(await token.claimedTickets(ticketId)).to.equal(true);
       expect(await token.originalMinter(tokenId)).to.equal(user.address);
     });

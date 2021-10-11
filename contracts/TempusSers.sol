@@ -23,6 +23,8 @@ import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import "@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
+import "./Shuffle.sol";
+
 contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// Total supply of sers.
     uint256 public constant MAX_SUPPLY = 11111;
@@ -92,15 +94,6 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
 
     function ticketToTokenId(uint256 ticketId) public view returns (uint256) {
         require(shuffleSeed != 0, "TempusSers: Seed not set yet");
-        return uint256(shuffle(SafeCast.toUint32(ticketId), uint32(MAX_SUPPLY), shuffleSeed));
-    }
-
-    function shuffle(
-        uint32 idx,
-        uint32 len,
-        uint32 seed
-    ) private pure returns (uint32) {
-        // TODO: use the proper algorithm
-        return (idx ^ len ^ seed) % len;
+        return uint256(Shuffle.permute(SafeCast.toUint32(ticketId), uint32(MAX_SUPPLY), shuffleSeed));
     }
 }

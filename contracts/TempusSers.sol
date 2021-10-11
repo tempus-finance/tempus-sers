@@ -52,7 +52,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         require(shuffleSeed == 0, "TempusSers: Seed already set");
 
         // TODO: set it with proper source of randomness
-        shuffleSeed = uint32(uint256(blockhash(0)));
+        shuffleSeed = uint32(uint256(blockhash(block.number - 1)));
     }
 
     function redeemTicket(

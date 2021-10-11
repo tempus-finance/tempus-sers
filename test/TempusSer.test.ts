@@ -211,10 +211,12 @@ describe("Tempus Sers", async () => {
       await token.setSeed();
       const ticketId = 1;
       const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
+      const tokenURI = (await token.baseTokenURI()) + tokenId + ".json";
       expect(await token.claimedTickets(ticketId)).to.equal(false);
       // Transfer(0, to, tokenId);
       expect(await redeemTicket(owner, user.address, ticketId))
-        .to.emit(token, "Transfer").withArgs("0x0000000000000000000000000000000000000000", user.address, tokenId);
+        .to.emit(token, "Transfer").withArgs("0x0000000000000000000000000000000000000000", user.address, tokenId)
+        .to.emit(token, "PermanentURI").withArgs(tokenURI, tokenId);
       expect(await token.claimedTickets(ticketId)).to.equal(true);
       expect(await token.originalMinter(tokenId)).to.equal(user.address);
     });

@@ -26,6 +26,9 @@ import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import "./Shuffle.sol";
 
 contract TempusSers is ERC721Enumerable, EIP712, Ownable {
+    /// Opensea specific event to mark metadata as frozen
+    event PermanentURI(string _value, uint256 indexed _id);
+
     /// Total supply of sers.
     uint256 public constant MAX_SUPPLY = 11111;
 
@@ -82,6 +85,8 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         originalMinter[tokenId] = recipient;
 
         _safeMint(recipient, tokenId);
+
+        emit PermanentURI(tokenURI(tokenId), tokenId);
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {

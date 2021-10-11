@@ -29,8 +29,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// Total supply of sers.
     uint256 public constant MAX_SUPPLY = 11111;
 
-    bytes32 private constant CLAIMSER_TYPEHASH =
-        keccak256("ClaimSer(address recipient,uint256 ticketId,uint256 tokenId)");
+    bytes32 private constant CLAIMSER_TYPEHASH = keccak256("ClaimSer(address recipient,uint256 ticketId)");
 
     /// The base URI for the collection.
     string public baseTokenURI;
@@ -58,7 +57,6 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     function redeemTicket(
         address recipient,
         uint256 ticketId,
-        uint256 tokenId,
         bytes memory signature
     ) external {
         // This is a short-cut for avoiding double claiming tickets.
@@ -66,14 +64,13 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         require(ticketId < MAX_SUPPLY, "TempusSer: Invalid ticket id");
 
         // Check validity of claim
-        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(CLAIMSER_TYPEHASH, recipient, ticketId, tokenId)));
+        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(CLAIMSER_TYPEHASH, recipient, ticketId)));
         require(SignatureChecker.isValidSignatureNow(owner(), digest, signature), "TempusSers: Invalid signature");
 
         // Claim ticket.
         claimedTickets[ticketId] = true;
 
-        // Sanity check.
-        require(tokenId == ticketToTokenId(ticketId), "TempusSers: Invalid ticket/token pair");
+        uint256 tokenId = ticketToTokenId(ticketId);
 
         _mintToUser(recipient, tokenId);
     }

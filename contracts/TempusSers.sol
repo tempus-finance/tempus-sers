@@ -32,66 +32,96 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// Total supply of sers.
     uint256 public constant MAX_SUPPLY = 3333;
 
-    bytes32 private constant CLAIMSER_TYPEHASH = keccak256("ClaimSer(address recipient,uint256 ticketId)");
+    bytes32 private constant CLAIMSER_TYPEHASH =
+        keccak256("ClaimSer(address recipient,uint256 batch,uint256 ticketId)");
+
+    /// The next batch which is yet to be issued.
+    uint256 public nextBatch;
+
+    /// The supply in each batch.
+    mapping(uint256 => uint256) public batchSupply;
 
     /// The base URI for the collection.
-    string public baseTokenURI;
+    mapping(uint256 => string) public baseTokenURI;
 
     /// The commitment to the base URI.
-    bytes32 public baseTokenURICommitment;
+    mapping(uint256 => bytes32) public baseTokenURICommitment;
 
     /// The seed used for the shuffling.
-    uint32 public shuffleSeed;
+    mapping(uint256 => uint32) public shuffleSeed;
 
-    /// The map of tickets which have been claimed already.
-    mapping(uint256 => bool) public claimedTickets;
+    /// The map of tickets (per batch) which have been claimed already.
+    mapping(uint256 => mapping(uint256 => bool)) public claimedTickets;
 
     /// The original minter of a given token.
     mapping(uint256 => address) public originalMinter;
 
-    constructor(bytes32 _baseTokenURICommitment) ERC721("Tempus Sers", "SERS") EIP712("Tempus Sers", "1") {
-        require(
-            (_baseTokenURICommitment != 0) && (_baseTokenURICommitment != keccak256("")),
-            "TempusSers: URI cannot be empty"
-        );
+    constructor() ERC721("Tempus Sers", "SERS") EIP712("Tempus Sers", "1") {}
 
-        baseTokenURICommitment = _baseTokenURICommitment;
+    function totalAvailableSupply() private view returns (uint256 ret) {
+        for (uint256 i = 0; i < nextBatch; i++) {
+            ret += batchSupply[i];
+        }
     }
 
-    function reveal(string calldata _baseTokenURI) external onlyOwner {
-        require(shuffleSeed != 0, "TempusSers: Seed not set yet");
-        require(bytes(baseTokenURI).length == 0, "TempusSers: Collection already revealed");
-        require(keccak256(bytes(_baseTokenURI)) == baseTokenURICommitment, "TempusSers: Commitment mismatch");
-
-        baseTokenURI = sanitizeBaseURI(_baseTokenURI);
+    /// Returns the token ID offset for any given batch.
+    function tokenBatchOffset(uint256 batch) private view returns (uint256 ret) {
+        assert(batch < nextBatch);
+        for (uint256 i = 0; i < batch; i++) {
+            ret += batchSupply[i];
+        }
     }
 
-    function setSeed() external onlyOwner {
-        require(shuffleSeed == 0, "TempusSers: Seed already set");
+    function addBatch(
+        uint256 batch,
+        bytes32 uriCommitment,
+        uint256 supply
+    ) external onlyOwner {
+        require(nextBatch == batch, "TempusSers: Invalid batch");
+        require((totalAvailableSupply() + supply) <= MAX_SUPPLY, "TempusSers: Supply will exceed maximum");
+        require((uriCommitment != 0) && (uriCommitment != keccak256("")), "TempusSers: URI cannot be empty");
+
+        baseTokenURICommitment[batch] = uriCommitment;
+        batchSupply[batch] = supply;
+
+        nextBatch++;
+    }
+
+    function revealBatch(uint256 batch, string calldata _baseTokenURI) external onlyOwner {
+        require(shuffleSeed[batch] != 0, "TempusSers: Seed not set yet");
+        require(bytes(baseTokenURI[batch]).length == 0, "TempusSers: Collection already revealed");
+        require(keccak256(bytes(_baseTokenURI)) == baseTokenURICommitment[batch], "TempusSers: Commitment mismatch");
+
+        baseTokenURI[batch] = sanitizeBaseURI(_baseTokenURI);
+    }
+
+    function setSeed(uint256 batch) external onlyOwner {
+        require(shuffleSeed[batch] == 0, "TempusSers: Seed already set");
 
         // TODO: set it with proper source of randomness
-        shuffleSeed = uint32(uint256(blockhash(block.number - 1)));
+        shuffleSeed[batch] = uint32(uint256(blockhash(block.number - 1)));
     }
 
     function redeemTicket(
         address recipient,
+        uint256 batch,
         uint256 ticketId,
         bytes memory signature
     ) external {
-        require(bytes(baseTokenURI).length != 0, "TempusSers: Collection not revealed yet");
+        require(bytes(baseTokenURI[batch]).length != 0, "TempusSers: Collection not revealed yet");
 
         // This is a short-cut for avoiding double claiming tickets.
-        require(!claimedTickets[ticketId], "TempusSers: Ticket already claimed");
+        require(!claimedTickets[batch][ticketId], "TempusSers: Ticket already claimed");
         require(ticketId < MAX_SUPPLY, "TempusSers: Invalid ticket id");
 
         // Check validity of claim
-        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(CLAIMSER_TYPEHASH, recipient, ticketId)));
+        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(CLAIMSER_TYPEHASH, recipient, batch, ticketId)));
         require(SignatureChecker.isValidSignatureNow(owner(), digest, signature), "TempusSers: Invalid signature");
 
         // Claim ticket.
-        claimedTickets[ticketId] = true;
+        claimedTickets[batch][ticketId] = true;
 
-        uint256 tokenId = ticketToTokenId(ticketId);
+        uint256 tokenId = ticketToTokenId(batch, ticketId);
 
         _mintToUser(recipient, tokenId);
     }
@@ -108,15 +138,29 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        require(bytes(baseTokenURI).length != 0, "TempusSers: Collection not revealed yet");
+        uint256 batch = tokenIdToBatch(tokenId);
+
+        require(bytes(baseTokenURI[batch]).length != 0, "TempusSers: Collection not revealed yet");
 
         // ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/1.json
-        return string(bytes.concat(bytes(baseTokenURI), bytes(Strings.toString(tokenId)), bytes(".json")));
+        return string(bytes.concat(bytes(baseTokenURI[batch]), bytes(Strings.toString(tokenId)), bytes(".json")));
     }
 
-    function ticketToTokenId(uint256 ticketId) public view returns (uint256) {
-        require(shuffleSeed != 0, "TempusSers: Seed not set yet");
-        return uint256(Shuffle.permute(SafeCast.toUint32(ticketId), uint32(MAX_SUPPLY), shuffleSeed));
+    function ticketToTokenId(uint256 batch, uint256 ticketId) public view returns (uint256) {
+        require(shuffleSeed[batch] != 0, "TempusSers: Seed not set yet");
+        uint256 rawTokenId = uint256(
+            Shuffle.permute(SafeCast.toUint32(ticketId), uint32(batchSupply[batch]), shuffleSeed[batch])
+        );
+        return batchToTokenId(batch, rawTokenId);
+        //        return tokenBatchOffset(batch) + rawTokenId;
+    }
+
+    function batchToTokenId(uint256 batch, uint256 tokenId) private pure returns (uint256) {
+        return (batch << 16) | tokenId;
+    }
+
+    function tokenIdToBatch(uint256 tokenId) private pure returns (uint256) {
+        return tokenId >> 16;
     }
 
     /// Sanitize the input URI so that it always end with a forward slash.

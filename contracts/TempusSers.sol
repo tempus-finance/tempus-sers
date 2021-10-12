@@ -17,51 +17,90 @@ contract TempusSers is ERC721Enumerable, Ownable {
     /// Total supply of sers.
     uint256 public constant MAX_SUPPLY = 3333;
 
+    /// The next batch which is yet to be issued.
+    uint256 public nextBatch;
+
+    /// The supply in each batch.
+    mapping(uint256 => uint256) public batchSupply;
+
     /// The base URI for the collection.
-    string public baseTokenURI;
+    mapping(uint256 => string) public baseTokenURIs;
 
     /// The merkle root of the claim list.
-    bytes32 public claimlistRoot;
+    mapping(uint256 => bytes32) public claimlistRoots;
 
     /// The seed used for the shuffling.
-    uint32 public shuffleSeed;
+    mapping(uint256 => uint32) public shuffleSeeds;
 
-    /// The map of tickets which have been claimed already.
-    mapping(uint256 => bool) public claimedTickets;
+    /// The map of tickets (per batch) which have been claimed already.
+    mapping(uint256 => mapping(uint256 => bool)) public claimedTickets;
 
     /// The original minter of a given token.
     mapping(uint256 => address) public originalMinter;
 
-    constructor(string memory _baseTokenURI, bytes32 _claimlistRoot) ERC721("Tempus Sers", "SERS") {
-        baseTokenURI = sanitizeBaseURI(_baseTokenURI);
-        claimlistRoot = _claimlistRoot;
+    constructor() ERC721("Tempus Sers", "SERS") {}
+
+    function totalAvailableSupply() private view returns (uint256 ret) {
+        for (uint256 i = 0; i < nextBatch; i++) {
+            ret += batchSupply[i];
+        }
     }
 
-    function setSeed() external onlyOwner {
-        require(shuffleSeed == 0, "TempusSers: Seed already set");
+    /// Returns the token ID offset for any given batch.
+    function tokenBatchOffset(uint256 batch) private view returns (uint256 ret) {
+        assert(batch < nextBatch);
+        for (uint256 i = 0; i < batch; i++) {
+            ret += batchSupply[i];
+        }
+    }
+
+    function addBatch(
+        uint256 batch,
+        string calldata baseTokenURI,
+        uint256 supply,
+        bytes32 claimlistRoot
+    ) external onlyOwner {
+        require(nextBatch == batch, "TempusSers: Invalid batch");
+        require(supply > 0, "TempusSers: Batch supply must be greater than 0");
+        require((totalAvailableSupply() + supply) <= MAX_SUPPLY, "TempusSers: Supply will exceed maximum");
+
+        baseTokenURIs[batch] = sanitizeBaseURI(baseTokenURI);
+        claimlistRoots[batch] = claimlistRoot;
+        batchSupply[batch] = supply;
+
+        nextBatch++;
+    }
+
+    function setSeed(uint256 batch) external onlyOwner {
+        require(shuffleSeeds[batch] == 0, "TempusSers: Seed already set");
+        require(batchSupply[batch] > 0, "TempusSers: Batch not initialized");
 
         // TODO: set it with proper source of randomness
-        shuffleSeed = uint32(uint256(blockhash(block.number - 1)));
+        shuffleSeeds[batch] = uint32(uint256(blockhash(block.number - 1)));
     }
 
     function proveTicket(
+        uint256 batch,
         address recipient,
         uint256 ticketId,
         bytes32[] calldata proof
     ) external {
+        require(batch < nextBatch, "TempusSers: Invalid batch");
+        require(shuffleSeeds[batch] != 0, "TempusSers: Seed not sed yet");
+
         // This is a short-cut for avoiding double claiming tickets.
-        require(!claimedTickets[ticketId], "TempusSers: Ticket already claimed");
+        require(!claimedTickets[batch][ticketId], "TempusSers: Ticket already claimed");
         require(ticketId > 0 && ticketId <= MAX_SUPPLY, "TempusSers: Invalid ticket id");
 
         require(recipient != address(0), "TempusSers: Invalid recipient");
 
         bytes32 leaf = keccak256(abi.encode(recipient, ticketId));
-        require(MerkleProof.verify(proof, claimlistRoot, leaf), "TempusSers: Invalid proof");
+        require(MerkleProof.verify(proof, claimlistRoots[batch], leaf), "TempusSers: Invalid proof");
 
         // Claim ticket.
-        claimedTickets[ticketId] = true;
+        claimedTickets[batch][ticketId] = true;
 
-        _mintToUser(recipient, ticketToTokenId(ticketId));
+        _mintToUser(recipient, ticketToTokenId(batch, ticketId));
     }
 
     function _mintToUser(address recipient, uint256 tokenId) private {
@@ -76,13 +115,26 @@ contract TempusSers is ERC721Enumerable, Ownable {
     }
 
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
+        uint256 batch = tokenIdToBatch(tokenId);
+
         // ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/1.json
-        return string(bytes.concat(bytes(baseTokenURI), bytes(Strings.toString(tokenId)), bytes(".json")));
+        return string(bytes.concat(bytes(baseTokenURIs[batch]), bytes(Strings.toString(tokenId)), bytes(".json")));
     }
 
-    function ticketToTokenId(uint256 ticketId) public view returns (uint256) {
-        require(shuffleSeed != 0, "TempusSers: Seed not set yet");
-        return uint256(Shuffle.permute(SafeCast.toUint32(ticketId - 1), uint32(MAX_SUPPLY), shuffleSeed));
+    function ticketToTokenId(uint256 batch, uint256 ticketId) public view returns (uint256) {
+        require(shuffleSeeds[batch] != 0, "TempusSers: Seed not set yet");
+        uint256 rawTokenId = uint256(
+            Shuffle.permute(SafeCast.toUint32(ticketId - 1), uint32(batchSupply[batch]), shuffleSeeds[batch])
+        );
+        return batchToTokenId(batch, rawTokenId);
+    }
+
+    function batchToTokenId(uint256 batch, uint256 tokenId) private pure returns (uint256) {
+        return (batch << 16) | tokenId;
+    }
+
+    function tokenIdToBatch(uint256 tokenId) private pure returns (uint256) {
+        return tokenId >> 16;
     }
 
     /// Sanitize the input URI so that it always end with a forward slash.

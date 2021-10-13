@@ -30,7 +30,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     event PermanentURI(string _value, uint256 indexed _id);
 
     /// Total supply of sers.
-    uint256 public constant MAX_SUPPLY = 11111;
+    uint256 public constant MAX_SUPPLY = 3333;
 
     bytes32 private constant CLAIMSER_TYPEHASH = keccak256("ClaimSer(address recipient,uint256 ticketId)");
 

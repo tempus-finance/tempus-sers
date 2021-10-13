@@ -126,7 +126,7 @@ describe("Tempus Sers", async () => {
 
     it("Should set initial properties", async () =>
     {
-      expect((await token.MAX_SUPPLY()).toString()).to.equal("11111");
+      expect((await token.MAX_SUPPLY()).toString()).to.equal("3333");
       expect(await token.shuffleSeed()).to.equal(0);
       expect(await token.baseTokenURI()).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     });

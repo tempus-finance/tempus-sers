@@ -41,6 +41,9 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// The supply in each batch.
     mapping(uint256 => uint256) public batchSupply;
 
+    /// The starting token ID for this batch.
+    mapping(uint256 => uint256) public batchOffset;
+
     /// The base URI for the collection.
     mapping(uint256 => string) public baseTokenURIs;
 
@@ -59,17 +62,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     constructor() ERC721("Tempus Sers", "SERS") EIP712("Tempus Sers", "1") {}
 
     function totalAvailableSupply() private view returns (uint256 ret) {
-        for (uint256 i = 0; i < nextBatch; i++) {
-            ret += batchSupply[i];
-        }
-    }
-
-    /// Returns the token ID offset for any given batch.
-    function tokenBatchOffset(uint256 batch) private view returns (uint256 ret) {
-        assert(batch < nextBatch);
-        for (uint256 i = 0; i < batch; i++) {
-            ret += batchSupply[i];
-        }
+        return (nextBatch == 0) ? 0 : (batchOffset[nextBatch - 1] + batchSupply[nextBatch - 1]);
     }
 
     function addBatch(
@@ -83,6 +76,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
 
         baseTokenURICommitments[batch] = uriCommitment;
         batchSupply[batch] = supply;
+        batchOffset[batch] = totalAvailableSupply();
 
         nextBatch++;
     }
@@ -151,16 +145,20 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         uint256 rawTokenId = uint256(
             Shuffle.permute(SafeCast.toUint32(ticketId), uint32(batchSupply[batch]), shuffleSeeds[batch])
         );
-        return batchToTokenId(batch, rawTokenId);
-        //        return tokenBatchOffset(batch) + rawTokenId;
+        return batchOffset[batch] + rawTokenId;
     }
 
-    function batchToTokenId(uint256 batch, uint256 tokenId) private pure returns (uint256) {
-        return (batch << 16) | tokenId;
-    }
+    function tokenIdToBatch(uint256 tokenId) private view returns (uint256) {
+        for (uint256 batch = 0; batch < nextBatch; batch++) {
+            uint256 offset = batchOffset[batch];
+            uint256 supply = batchSupply[batch];
 
-    function tokenIdToBatch(uint256 tokenId) private pure returns (uint256) {
-        return tokenId >> 16;
+            if ((offset <= tokenId) && (tokenId <= (offset + supply))) {
+                return batch;
+            }
+        }
+        // Should not be reached.
+        assert(false);
     }
 
     /// Sanitize the input URI so that it always end with a forward slash.

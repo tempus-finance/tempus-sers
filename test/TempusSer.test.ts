@@ -139,12 +139,10 @@ describe("Tempus Sers", async () => {
       expect(await token2.baseTokenURI()).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     });
 
-    it("Should not fail on empy base URI", async () =>
+    it("Should fail on empy base URI", async () =>
     {
       const TempusSers = await ethers.getContractFactory("TempusSers");
-      let token2 = await TempusSers.deploy("");
-      await token2.deployed();
-      expect(await token2.baseTokenURI()).to.equal("");
+      (await expectRevert(TempusSers.deploy(""))).to.equal("TempusSers: URI cannot be empty");
     });
   });
 

@@ -104,7 +104,8 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// Note that we assume the URI is ASCII, and we ignore the case of empty URI.
     function sanitizeBaseURI(string memory uri) private view returns (string memory) {
         bytes memory tmp = bytes(uri);
-        if ((tmp.length > 0) && (tmp[tmp.length - 1] != "/")) {
+        require(tmp.length != 0, "TempusSers: URI cannot be empty");
+        if (tmp[tmp.length - 1] != "/") {
             return string(bytes.concat(tmp, "/"));
         }
         return uri;

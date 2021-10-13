@@ -42,13 +42,13 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     mapping(uint256 => uint256) public batchSupply;
 
     /// The base URI for the collection.
-    mapping(uint256 => string) public baseTokenURI;
+    mapping(uint256 => string) public baseTokenURIs;
 
     /// The commitment to the base URI.
-    mapping(uint256 => bytes32) public baseTokenURICommitment;
+    mapping(uint256 => bytes32) public baseTokenURICommitments;
 
     /// The seed used for the shuffling.
-    mapping(uint256 => uint32) public shuffleSeed;
+    mapping(uint256 => uint32) public shuffleSeeds;
 
     /// The map of tickets (per batch) which have been claimed already.
     mapping(uint256 => mapping(uint256 => bool)) public claimedTickets;
@@ -81,25 +81,25 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         require((totalAvailableSupply() + supply) <= MAX_SUPPLY, "TempusSers: Supply will exceed maximum");
         require((uriCommitment != 0) && (uriCommitment != keccak256("")), "TempusSers: URI cannot be empty");
 
-        baseTokenURICommitment[batch] = uriCommitment;
+        baseTokenURICommitments[batch] = uriCommitment;
         batchSupply[batch] = supply;
 
         nextBatch++;
     }
 
     function revealBatch(uint256 batch, string calldata _baseTokenURI) external onlyOwner {
-        require(shuffleSeed[batch] != 0, "TempusSers: Seed not set yet");
-        require(bytes(baseTokenURI[batch]).length == 0, "TempusSers: Collection already revealed");
-        require(keccak256(bytes(_baseTokenURI)) == baseTokenURICommitment[batch], "TempusSers: Commitment mismatch");
+        require(shuffleSeeds[batch] != 0, "TempusSers: Seed not set yet");
+        require(bytes(baseTokenURIs[batch]).length == 0, "TempusSers: Collection already revealed");
+        require(keccak256(bytes(_baseTokenURI)) == baseTokenURICommitments[batch], "TempusSers: Commitment mismatch");
 
-        baseTokenURI[batch] = sanitizeBaseURI(_baseTokenURI);
+        baseTokenURIs[batch] = sanitizeBaseURI(_baseTokenURI);
     }
 
     function setSeed(uint256 batch) external onlyOwner {
-        require(shuffleSeed[batch] == 0, "TempusSers: Seed already set");
+        require(shuffleSeeds[batch] == 0, "TempusSers: Seed already set");
 
         // TODO: set it with proper source of randomness
-        shuffleSeed[batch] = uint32(uint256(blockhash(block.number - 1)));
+        shuffleSeeds[batch] = uint32(uint256(blockhash(block.number - 1)));
     }
 
     function redeemTicket(
@@ -108,7 +108,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         uint256 ticketId,
         bytes memory signature
     ) external {
-        require(bytes(baseTokenURI[batch]).length != 0, "TempusSers: Collection not revealed yet");
+        require(bytes(baseTokenURIs[batch]).length != 0, "TempusSers: Collection not revealed yet");
 
         // This is a short-cut for avoiding double claiming tickets.
         require(!claimedTickets[batch][ticketId], "TempusSers: Ticket already claimed");
@@ -140,16 +140,16 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
         uint256 batch = tokenIdToBatch(tokenId);
 
-        require(bytes(baseTokenURI[batch]).length != 0, "TempusSers: Collection not revealed yet");
+        require(bytes(baseTokenURIs[batch]).length != 0, "TempusSers: Collection not revealed yet");
 
         // ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/1.json
-        return string(bytes.concat(bytes(baseTokenURI[batch]), bytes(Strings.toString(tokenId)), bytes(".json")));
+        return string(bytes.concat(bytes(baseTokenURIs[batch]), bytes(Strings.toString(tokenId)), bytes(".json")));
     }
 
     function ticketToTokenId(uint256 batch, uint256 ticketId) public view returns (uint256) {
-        require(shuffleSeed[batch] != 0, "TempusSers: Seed not set yet");
+        require(shuffleSeeds[batch] != 0, "TempusSers: Seed not set yet");
         uint256 rawTokenId = uint256(
-            Shuffle.permute(SafeCast.toUint32(ticketId), uint32(batchSupply[batch]), shuffleSeed[batch])
+            Shuffle.permute(SafeCast.toUint32(ticketId), uint32(batchSupply[batch]), shuffleSeeds[batch])
         );
         return batchToTokenId(batch, rawTokenId);
         //        return tokenBatchOffset(batch) + rawTokenId;

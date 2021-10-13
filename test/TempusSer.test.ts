@@ -131,8 +131,8 @@ describe("Tempus Sers", async () => {
     it("Should set initial properties", async () =>
     {
       expect((await token.MAX_SUPPLY()).toString()).to.equal("3333");
-      expect(await token.shuffleSeed(0)).to.equal(0);
-      expect(await token.baseTokenURI(0)).to.equal("");
+      expect(await token.shuffleSeeds(0)).to.equal(0);
+      expect(await token.baseTokenURIs(0)).to.equal("");
     });
   });
 
@@ -146,14 +146,14 @@ describe("Tempus Sers", async () => {
     {
       await token.setSeed(0);
       await token.revealBatch(0, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
-      expect(await token.baseTokenURI(0)).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      expect(await token.baseTokenURIs(0)).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     });
     it("Should sanitize base URI", async () =>
     {
       await token.addBatch(1, utils.id("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs"), 100);
       await token.setSeed(1);
       await token.revealBatch(1, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs");
-      expect(await token.baseTokenURI(1)).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      expect(await token.baseTokenURIs(1)).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     });
 
     it("Should fail on empy base URI", async () =>
@@ -183,10 +183,10 @@ describe("Tempus Sers", async () => {
       // being 0 again, that means setSeed can be called again.
       //
       // For testing purposes we assume the probability of this is low.
-      const prevSeed = await token.shuffleSeed(0);
+      const prevSeed = await token.shuffleSeeds(0);
       expect(prevSeed).to.equal(0);
       await token.setSeed(0);
-      expect(await token.shuffleSeed(0)).to.not.equal(prevSeed);
+      expect(await token.shuffleSeeds(0)).to.not.equal(prevSeed);
     });
     it("Should allow to set seed once", async () =>
     {
@@ -277,7 +277,7 @@ describe("Tempus Sers", async () => {
 
       const ticketId = 1;
       const tokenId = await token.ticketToTokenId(0, BigNumber.from(ticketId));
-      const tokenURI = (await token.baseTokenURI(0)) + tokenId + ".json";
+      const tokenURI = (await token.baseTokenURIs(0)) + tokenId + ".json";
       expect(await token.claimedTickets(0, ticketId)).to.equal(false);
       // Transfer(0, to, tokenId);
       expect(await redeemTicket(owner, user.address, 0, ticketId))

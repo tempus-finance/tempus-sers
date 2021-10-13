@@ -130,6 +130,20 @@ describe("Tempus Sers", async () => {
       expect(await token.shuffleSeed()).to.equal(0);
       expect(await token.baseTokenURI()).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     });
+
+    it("Should sanitize base URI", async () =>
+    {
+      const TempusSers = await ethers.getContractFactory("TempusSers");
+      let token2 = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs");
+      await token2.deployed();
+      expect(await token2.baseTokenURI()).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+    });
+
+    it("Should fail on empy base URI", async () =>
+    {
+      const TempusSers = await ethers.getContractFactory("TempusSers");
+      (await expectRevert(TempusSers.deploy(""))).to.equal("TempusSers: URI cannot be empty");
+    });
   });
 
   describe("Seed and shuffle", async () =>

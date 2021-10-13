@@ -47,7 +47,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     mapping(uint256 => address) public originalMinter;
 
     constructor(string memory _baseTokenURI) ERC721("Tempus Sers", "SERS") EIP712("Tempus Sers", "1") {
-        baseTokenURI = _baseTokenURI;
+        baseTokenURI = sanitizeBaseURI(_baseTokenURI);
     }
 
     function setSeed() external onlyOwner {
@@ -97,5 +97,17 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     function ticketToTokenId(uint256 ticketId) public view returns (uint256) {
         require(shuffleSeed != 0, "TempusSers: Seed not set yet");
         return uint256(Shuffle.permute(SafeCast.toUint32(ticketId), uint32(MAX_SUPPLY), shuffleSeed));
+    }
+
+    /// Sanitize the input URI so that it always end with a forward slash.
+    ///
+    /// Note that we assume the URI is ASCII, and we ignore the case of empty URI.
+    function sanitizeBaseURI(string memory uri) private view returns (string memory) {
+        bytes memory tmp = bytes(uri);
+        require(tmp.length != 0, "TempusSers: URI cannot be empty");
+        if (tmp[tmp.length - 1] != "/") {
+            return string(bytes.concat(tmp, "/"));
+        }
+        return uri;
     }
 }

@@ -42,7 +42,9 @@
     "typescript": "^4.2.4"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^4.3.2"
+    "@openzeppelin/contracts": "^4.3.2",
+    "keccak256": "^1.0.3",
+    "merkletreejs": "^0.2.24"
   },
   "scripts": {
     "build": "npx hardhat compile",

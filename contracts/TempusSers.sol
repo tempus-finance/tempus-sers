@@ -19,6 +19,7 @@ pragma solidity 0.8.4;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import "@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
@@ -37,6 +38,9 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// The base URI for the collection.
     string public baseTokenURI;
 
+    /// The merkle root of the claim list.
+    bytes32 public claimlistRoot;
+
     /// The seed used for the shuffling.
     uint32 public shuffleSeed;
 
@@ -46,8 +50,12 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// The original minter of a given token.
     mapping(uint256 => address) public originalMinter;
 
-    constructor(string memory _baseTokenURI) ERC721("Tempus Sers", "SERS") EIP712("Tempus Sers", "1") {
+    constructor(string memory _baseTokenURI, bytes32 _claimlistRoot)
+        ERC721("Tempus Sers", "SERS")
+        EIP712("Tempus Sers", "1")
+    {
         baseTokenURI = sanitizeBaseURI(_baseTokenURI);
+        claimlistRoot = _claimlistRoot;
     }
 
     function setSeed() external onlyOwner {
@@ -55,6 +63,26 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
 
         // TODO: set it with proper source of randomness
         shuffleSeed = uint32(uint256(blockhash(block.number - 1)));
+    }
+
+    function proveTicket(
+        address recipient,
+        uint256 ticketId,
+        bytes32[] calldata proof
+    ) external {
+        // This is a short-cut for avoiding double claiming tickets.
+        require(!claimedTickets[ticketId], "TempusSers: Ticket already claimed");
+        require(ticketId > 0 && ticketId <= MAX_SUPPLY, "TempusSers: Invalid ticket id");
+
+        require(recipient != address(0), "TempusSers: Invalid recipient");
+
+        bytes32 leaf = keccak256(abi.encode(recipient, ticketId));
+        require(MerkleProof.verify(proof, claimlistRoot, leaf), "TempusSers: Invalid proof");
+
+        // Claim ticket.
+        claimedTickets[ticketId] = true;
+
+        _mintToUser(recipient, ticketToTokenId(ticketId));
     }
 
     function redeemTicket(
@@ -102,7 +130,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// Sanitize the input URI so that it always end with a forward slash.
     ///
     /// Note that we assume the URI is ASCII, and we ignore the case of empty URI.
-    function sanitizeBaseURI(string memory uri) private view returns (string memory) {
+    function sanitizeBaseURI(string memory uri) private pure returns (string memory) {
         bytes memory tmp = bytes(uri);
         require(tmp.length != 0, "TempusSers: URI cannot be empty");
         if (tmp[tmp.length - 1] != "/") {

@@ -1,8 +1,10 @@
 import { ethers } from "hardhat";
 import { expect, use } from "chai";
-import { BigNumber, Contract } from "ethers";
+import { BigNumber, Contract, utils as ethersUtils } from "ethers";
 import * as signers from "@nomiclabs/hardhat-ethers/dist/src/signers";
 import { solidity } from "ethereum-waffle";
+import { MerkleTree } from "merkletreejs";
+import * as keccak256 from "keccak256";
 
 /**
  * Insert helpers for event matching.
@@ -82,17 +84,83 @@ describe("Shuffle", async () => {
   });
 });
 
+interface Claim {
+  recipient:string;
+  ticketId:number;
+}
+
+class ClaimList {
+  list:Array<Claim>;
+  tree:MerkleTree;
+
+  constructor(addresses:Array<string>) {
+    // Take the addresses and assign a ticketId to them (from the range of 1..n).
+    this.list = addresses.map((e, i) => {
+      return { recipient: e, ticketId: i + 1};
+    });
+
+    // Create the merkle tree.
+    const leaves = this.list.map((e) => {
+      return this.encodeLeaf(e.recipient, e.ticketId);
+    });
+    this.tree = new MerkleTree(leaves, keccak256, { hashLeaves: false, sortPairs: true });
+  }
+
+  // Preprocess a single tree element. ABI encoding is important here as the contract must do the same.
+  encodeLeaf(recipient, ticketId) {
+    return ethersUtils.keccak256(ethersUtils.defaultAbiCoder.encode([ "address", "uint256" ], [ recipient, ticketId ]));
+  }
+
+  // Get the merkle root.
+  public getRoot(): string {
+    return this.tree.getHexRoot();
+  }
+
+  // Create a proof for a given recipient/ticketId combination. Does not validate it is part of the tree.
+  public getProof(recipient:string, ticketId:number): Array<string> {
+    return this.tree.getHexProof(this.encodeLeaf(recipient, ticketId));
+  }
+
+  // Returns the list of all possible claims.
+  public getList(): Array<Claim> {
+    return this.list;
+  }
+
+  // Helper function for testing. Generates a list of claims.
+  static generate(count:number): ClaimList {
+    let addresses = [];
+    for (let i = 1; i <= count; i++) {
+      // Here we generate addresses in the form of 0x100000000000000000000000000000000000nnnn
+      let address = BigNumber.from("0x1000000000000000000000000000000000000000").add(BigNumber.from(i));
+      // Convert it to checksummed address
+      let checksummedAddress = ethersUtils.getAddress(address.toHexString());
+      addresses.push(checksummedAddress);
+    }
+    return new ClaimList(addresses);
+  }
+}
+
 describe("Tempus Sers", async () => {
   let owner:Signer, user:Signer;
   let token;
+  let claimList:ClaimList;
+
+  before(async () => {
+    claimList = ClaimList.generate(1111);
+  });
 
   beforeEach(async () => {
     [owner, user] = await ethers.getSigners();
+
     const TempusSers = await ethers.getContractFactory("TempusSers");
-    token = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+    token = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/", claimList.getRoot());
     await token.deployed();
   });
 
+  async function proveTicket(recipient:string, ticketId:number): Promise<void> {
+    const proof = claimList.getProof(recipient, ticketId);
+    return token.proveTicket(recipient, ticketId, proof);
+  }
 
   async function redeemTicket(signer, recipient, ticketId): Promise<void> {
     const domain = {
@@ -143,7 +211,7 @@ describe("Tempus Sers", async () => {
     it("Should sanitize base URI", async () =>
     {
       const TempusSers = await ethers.getContractFactory("TempusSers");
-      let token2 = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs");
+      let token2 = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs", claimList.getRoot());
       await token2.deployed();
       expect(await token2.baseTokenURI()).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     });
@@ -151,7 +219,7 @@ describe("Tempus Sers", async () => {
     it("Should fail on empy base URI", async () =>
     {
       const TempusSers = await ethers.getContractFactory("TempusSers");
-      (await expectRevert(TempusSers.deploy(""))).to.equal("TempusSers: URI cannot be empty");
+      (await expectRevert(TempusSers.deploy("", claimList.getRoot()))).to.equal("TempusSers: URI cannot be empty");
     });
   });
 
@@ -283,6 +351,51 @@ describe("Tempus Sers", async () => {
         expect(await token.claimedTickets(ticketId)).to.equal(true);
         expect(await token.originalMinter(tokenId)).to.equal(user.address);
       }
+    }).timeout(300000);
+  });
+
+  describe("Prove", async () =>
+  {
+    it("Should succeed with correct proof", async () =>
+    {
+      await token.setSeed();
+      const recipient = "0x1000000000000000000000000000000000000001";
+      const ticketId = 1;
+      const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
+      const tokenURI = (await token.baseTokenURI()) + tokenId + ".json";
+      expect(await token.claimedTickets(ticketId)).to.equal(false);
+      // Transfer(0, to, tokenId);
+      expect(await proveTicket(recipient, ticketId))
+        .to.emit(token, "Transfer").withArgs("0x0000000000000000000000000000000000000000", recipient, tokenId)
+        .to.emit(token, "PermanentURI").withArgs(tokenURI, tokenId);
+      expect(await token.claimedTickets(ticketId)).to.equal(true);
+      expect(await token.originalMinter(tokenId)).to.equal(recipient);
+    });
+
+    it("Should allow claiming all addresses", async () =>
+    {
+      await token.setSeed();
+      const maxSupply = await token.MAX_SUPPLY();
+
+      const claims = claimList.getList();
+      for (let i = 0; i < claims.length; i++) {
+        if ((i + 1) > maxSupply) {
+          // Sanity check.
+          break;
+        }
+        const recipient = claims[i].recipient;
+        const ticketId = claims[i].ticketId;
+
+        const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
+        const tokenURI = (await token.baseTokenURI()) + tokenId + ".json";
+        expect(await token.claimedTickets(ticketId)).to.equal(false);
+        // Transfer(0, to, tokenId);
+        expect(await proveTicket(recipient, ticketId))
+          .to.emit(token, "Transfer").withArgs("0x0000000000000000000000000000000000000000", recipient, tokenId)
+          .to.emit(token, "PermanentURI").withArgs(tokenURI, tokenId);
+        expect(await token.claimedTickets(ticketId)).to.equal(true);
+        expect(await token.originalMinter(tokenId)).to.equal(recipient);
+      };
     }).timeout(300000);
   });
 });

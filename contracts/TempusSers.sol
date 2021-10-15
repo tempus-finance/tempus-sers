@@ -64,7 +64,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     ) external {
         // This is a short-cut for avoiding double claiming tickets.
         require(!claimedTickets[ticketId], "TempusSers: Ticket already claimed");
-        require(ticketId < MAX_SUPPLY, "TempusSer: Invalid ticket id");
+        require(ticketId > 0 && ticketId <= MAX_SUPPLY, "TempusSers: Invalid ticket id");
 
         // Check validity of claim
         bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(CLAIMSER_TYPEHASH, recipient, ticketId)));
@@ -96,7 +96,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
 
     function ticketToTokenId(uint256 ticketId) public view returns (uint256) {
         require(shuffleSeed != 0, "TempusSers: Seed not set yet");
-        return uint256(Shuffle.permute(SafeCast.toUint32(ticketId), uint32(MAX_SUPPLY), shuffleSeed));
+        return uint256(Shuffle.permute(SafeCast.toUint32(ticketId - 1), uint32(MAX_SUPPLY), shuffleSeed));
     }
 
     /// Sanitize the input URI so that it always end with a forward slash.

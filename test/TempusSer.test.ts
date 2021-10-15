@@ -246,7 +246,7 @@ describe("Tempus Sers", async () => {
     it("Should work with redeeming all tickets", async () => {
       await token.setSeed();
       const maxSupply = await token.MAX_SUPPLY();
-      for (let ticketId = 0; ticketId < maxSupply; ticketId++) {
+      for (let ticketId = 1; ticketId <= maxSupply; ticketId++) {
         const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
         const tokenURI = (await token.baseTokenURI()) + tokenId + ".json";
         expect(await token.claimedTickets(ticketId)).to.equal(false);

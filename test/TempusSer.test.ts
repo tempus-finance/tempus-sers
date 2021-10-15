@@ -57,18 +57,27 @@ describe("Shuffle", async () => {
       (await expectRevert(lib.permute(0, 0, 0))).to.equal(
         "VM Exception while processing transaction: reverted with panic code 0x1 (Assertion error)"
       );
-      expect(await lib.permute(1, 1, 0)).to.equal(0);
+      expect(await lib.permute(0, 1, 0)).to.equal(0);
       expect(await lib.permute(1, 0xffffffff, 0)).to.equal(873951518);
       expect(await lib.permute(1, 0xffffffff, 0xffffffff)).to.equal(4108390583);
       // This is the idx<=len case
       (await expectRevert(lib.permute(0xffffffff, 1, 0xffffffff))).to.equal(
         "VM Exception while processing transaction: reverted with panic code 0x1 (Assertion error)"
       );
-      expect(await lib.permute(0xffffffff, 0xffffffff, 0xffffffff)).to.equal(1899993531);
-      expect(await lib.permute(0xffffffff, 0xffffffff, 0)).to.equal(3241938400);
+      expect(await lib.permute(0xfffffffe, 0xffffffff, 0xffffffff)).to.equal(2234533823);
+      expect(await lib.permute(0xfffffffe, 0xffffffff, 0)).to.equal(1953920120);
       expect(await lib.permute(1, 11111, 0)).to.equal(9552);
       expect(await lib.permute(1, 11111, 0x1f7faa55)).to.equal(10073);
       expect(await lib.permute(222, 11111, 0x1f7faa55)).to.equal(3069);
+
+      expect(await lib.permute(0, 1, 0x1f7faa55)).to.equal(0);
+
+      expect(await lib.permute(0, 2, 0x1f7faa55)).to.equal(1);
+      expect(await lib.permute(1, 2, 0x1f7faa55)).to.equal(0);
+
+      expect(await lib.permute(0, 3, 0x1f7faa55)).to.equal(1);
+      expect(await lib.permute(1, 3, 0x1f7faa55)).to.equal(0);
+      expect(await lib.permute(2, 3, 0x1f7faa55)).to.equal(2);
     });
   });
 });
@@ -234,5 +243,20 @@ describe("Tempus Sers", async () => {
       expect(await token.claimedTickets(ticketId)).to.equal(true);
       expect(await token.originalMinter(tokenId)).to.equal(user.address);
     });
+    it("Should work with redeeming all tickets", async () => {
+      await token.setSeed();
+      const maxSupply = await token.MAX_SUPPLY();
+      for (let ticketId = 0; ticketId < maxSupply; ticketId++) {
+        const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
+        const tokenURI = (await token.baseTokenURI()) + tokenId + ".json";
+        expect(await token.claimedTickets(ticketId)).to.equal(false);
+        // Transfer(0, to, tokenId);
+        expect(await redeemTicket(owner, user.address, ticketId))
+          .to.emit(token, "Transfer").withArgs("0x0000000000000000000000000000000000000000", user.address, tokenId)
+          .to.emit(token, "PermanentURI").withArgs(tokenURI, tokenId);
+        expect(await token.claimedTickets(ticketId)).to.equal(true);
+        expect(await token.originalMinter(tokenId)).to.equal(user.address);
+      }
+    }).timeout(300000);
   });
 });

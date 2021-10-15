@@ -5,12 +5,14 @@
 pragma solidity 0.8.4;
 
 library Shuffle {
+    /// @param idx The index we want to permute. Must be between 0 and len-1.
+    /// @param len The domain of the permutation. Must not be 0.
     function permute(
         uint32 idx,
         uint32 len,
         uint32 seed
     ) internal pure returns (uint32 ret) {
-        assert(idx <= len && len != 0);
+        assert(len != 0 && idx < len);
         uint32 mask = getMask(len);
         do {
             idx = hash(idx, mask, seed);

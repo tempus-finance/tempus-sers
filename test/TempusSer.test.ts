@@ -84,6 +84,12 @@ describe("Shuffle", async () => {
   });
 });
 
+interface ClaimListMeta {
+  batch:number;
+  supply:number;
+  baseTokenURI:string;
+}
+
 interface Claim {
   recipient:string;
   ticketId:number;
@@ -92,8 +98,11 @@ interface Claim {
 class ClaimList {
   list:Array<Claim>;
   tree:MerkleTree;
+  meta:ClaimListMeta;
 
-  constructor(addresses:Array<string>) {
+  constructor(addresses:Array<string>, meta:ClaimListMeta) {
+    this.meta = meta;
+
     // Take the addresses and assign a ticketId to them (from the range of 1..n).
     this.list = addresses.map((e, i) => {
       return { recipient: e, ticketId: i + 1};
@@ -101,14 +110,19 @@ class ClaimList {
 
     // Create the merkle tree.
     const leaves = this.list.map((e) => {
-      return this.encodeLeaf(e.recipient, e.ticketId);
+      return this.encodeLeaf(meta.batch, e.recipient, e.ticketId);
     });
+
+    // Create the verification entry.
+    const uriHash = ethersUtils.keccak256(ethersUtils.defaultAbiCoder.encode([ "uint256", "string" ], [ meta.supply, meta.baseTokenURI ]));
+    leaves.push(this.encodeLeaf(meta.batch, "0x0000000000000000000000000000000000000000", uriHash));
+
     this.tree = new MerkleTree(leaves, keccak256, { hashLeaves: false, sortPairs: true });
   }
 
   // Preprocess a single tree element. ABI encoding is important here as the contract must do the same.
-  encodeLeaf(recipient, ticketId) {
-    return ethersUtils.keccak256(ethersUtils.defaultAbiCoder.encode([ "address", "uint256" ], [ recipient, ticketId ]));
+  encodeLeaf(batch, recipient, ticketId) {
+    return ethersUtils.keccak256(ethersUtils.defaultAbiCoder.encode([ "uint256", "address", "uint256" ], [ batch, recipient, ticketId ]));
   }
 
   // Get the merkle root.
@@ -118,7 +132,13 @@ class ClaimList {
 
   // Create a proof for a given recipient/ticketId combination. Does not validate it is part of the tree.
   public getProof(recipient:string, ticketId:number): Array<string> {
-    return this.tree.getHexProof(this.encodeLeaf(recipient, ticketId));
+    return this.tree.getHexProof(this.encodeLeaf(this.meta.batch, recipient, ticketId));
+  }
+
+  // Create the proof for a given batch.
+  public getBatchProof(): Array<string> {
+    const uriHash = ethersUtils.keccak256(ethersUtils.defaultAbiCoder.encode([ "uint256", "string" ], [ this.meta.supply, this.meta.baseTokenURI ]));
+    return this.tree.getHexProof(this.encodeLeaf(this.meta.batch, "0x0000000000000000000000000000000000000000", uriHash));
   }
 
   // Returns the list of all possible claims.
@@ -127,7 +147,7 @@ class ClaimList {
   }
 
   // Helper function for testing. Generates a list of claims.
-  static generate(count:number): ClaimList {
+  static generate(count:number, meta:ClaimListMeta): ClaimList {
     let addresses = [];
     for (let i = 1; i <= count; i++) {
       // Here we generate addresses in the form of 0x100000000000000000000000000000000000nnnn
@@ -136,7 +156,7 @@ class ClaimList {
       let checksummedAddress = ethersUtils.getAddress(address.toHexString());
       addresses.push(checksummedAddress);
     }
-    return new ClaimList(addresses);
+    return new ClaimList(addresses, meta);
   }
 }
 
@@ -147,9 +167,15 @@ describe("Tempus Sers", async () => {
   const defaultBatch = 0;
 
   before(async () => {
+    const meta = {
+      batch: defaultBatch,
+      supply: 1111,
+      baseTokenURI: "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/"
+    };
+
     // This will insert to claimList[0]
     claimList = [];
-    claimList.push(ClaimList.generate(1111));
+    claimList.push(ClaimList.generate(1111, meta));
   });
 
   beforeEach(async () => {
@@ -160,7 +186,7 @@ describe("Tempus Sers", async () => {
     await token.deployed();
 
     // TODO: test addBatch comprehensively
-    await token.addBatch(defaultBatch, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/", 1111, claimList[defaultBatch].getRoot());
+    await token.addBatch(defaultBatch, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/", 1111, claimList[defaultBatch].getRoot(), claimList[defaultBatch].getBatchProof());
   });
 
   async function proveTicket(batch:number, recipient:string, ticketId:number): Promise<void> {
@@ -192,19 +218,33 @@ describe("Tempus Sers", async () => {
 
     it("Should sanitize base URI", async () =>
     {
+      const meta = {
+        batch: 0,
+        supply: 1111,
+        baseTokenURI: "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs"
+      };
+      const claimList = ClaimList.generate(1111, meta);
+
       const TempusSers = await ethers.getContractFactory("TempusSers");
       let token2 = await TempusSers.deploy();
       await token2.deployed();
-      await token2.addBatch(defaultBatch, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs", 1111, claimList[defaultBatch].getRoot());
-      expect(await token2.baseTokenURIs(defaultBatch)).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      await token2.addBatch(0, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs", 1111, claimList.getRoot(), claimList.getBatchProof());
+      expect(await token2.baseTokenURIs(0)).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     });
 
     it("Should fail on empy base URI", async () =>
     {
+      const meta = {
+        batch: 0,
+        supply: 1111,
+        baseTokenURI: ""
+      };
+      const claimList = ClaimList.generate(1111, meta);
+
       const TempusSers = await ethers.getContractFactory("TempusSers");
       let token2 = await TempusSers.deploy();
       await token2.deployed();
-      (await expectRevert(token2.addBatch(defaultBatch, "", 1111, claimList[defaultBatch].getRoot()))).to.equal("TempusSers: URI cannot be empty");
+      (await expectRevert(token2.addBatch(0, "", 1111, claimList.getRoot(), claimList.getBatchProof()))).to.equal("TempusSers: URI cannot be empty");
     });
   });
 

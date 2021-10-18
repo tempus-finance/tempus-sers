@@ -51,11 +51,15 @@ contract TempusSers is ERC721Enumerable, Ownable {
         uint256 batch,
         string calldata baseTokenURI,
         uint256 supply,
-        bytes32 claimlistRoot
+        bytes32 claimlistRoot,
+        bytes32[] calldata proof
     ) external onlyOwner {
         require(nextBatch == batch, "TempusSers: Invalid batch");
         require(supply > 0, "TempusSers: Batch supply must be greater than 0");
         require((totalAvailableSupply() + supply) <= MAX_SUPPLY, "TempusSers: Supply will exceed maximum");
+
+        bytes32 leaf = keccak256(abi.encode(batch, address(0), keccak256(abi.encode(supply, baseTokenURI))));
+        require(MerkleProof.verify(proof, claimlistRoot, leaf), "TempusSers: Invalid proof");
 
         baseTokenURIs[batch] = sanitizeBaseURI(baseTokenURI);
         claimlistRoots[batch] = claimlistRoot;
@@ -88,7 +92,7 @@ contract TempusSers is ERC721Enumerable, Ownable {
 
         require(recipient != address(0), "TempusSers: Invalid recipient");
 
-        bytes32 leaf = keccak256(abi.encode(recipient, ticketId));
+        bytes32 leaf = keccak256(abi.encode(batch, recipient, ticketId));
         require(MerkleProof.verify(proof, claimlistRoots[batch], leaf), "TempusSers: Invalid proof");
 
         // Claim ticket.

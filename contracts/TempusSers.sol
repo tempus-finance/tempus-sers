@@ -1,17 +1,3 @@
-// ReedemableNFT, where a curator can issue a redeemable cheque for minting a given token.
-//
-// The message to be signed is an EIP-712 compatible structured data:
-//   struct RedeemableNFT {
-//       address recipient;
-//       uint256 tokenId;
-//   }
-//
-// This message can then signed by the curator and given to the user who submits it.
-// The validity of the signature is checked according to EIP-1271 if the signer is a contract,
-// or via a regular signature check otherwise.
-//
-// See: https://eips.ethereum.org/EIPS/eip-712 and https://eips.ethereum.org/EIPS/eip-1271
-//
 // SPDX-License-Identifier: MIT
 
 pragma solidity 0.8.4;
@@ -20,20 +6,16 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Enumerable.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
-import "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
-import "@openzeppelin/contracts/utils/cryptography/draft-EIP712.sol";
 import "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 import "./Shuffle.sol";
 
-contract TempusSers is ERC721Enumerable, EIP712, Ownable {
+contract TempusSers is ERC721Enumerable, Ownable {
     /// Opensea specific event to mark metadata as frozen
     event PermanentURI(string _value, uint256 indexed _id);
 
     /// Total supply of sers.
     uint256 public constant MAX_SUPPLY = 3333;
-
-    bytes32 private constant CLAIMSER_TYPEHASH = keccak256("ClaimSer(address recipient,uint256 ticketId)");
 
     /// The base URI for the collection.
     string public baseTokenURI;
@@ -50,10 +32,7 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
     /// The original minter of a given token.
     mapping(uint256 => address) public originalMinter;
 
-    constructor(string memory _baseTokenURI, bytes32 _claimlistRoot)
-        ERC721("Tempus Sers", "SERS")
-        EIP712("Tempus Sers", "1")
-    {
+    constructor(string memory _baseTokenURI, bytes32 _claimlistRoot) ERC721("Tempus Sers", "SERS") {
         baseTokenURI = sanitizeBaseURI(_baseTokenURI);
         claimlistRoot = _claimlistRoot;
     }
@@ -83,27 +62,6 @@ contract TempusSers is ERC721Enumerable, EIP712, Ownable {
         claimedTickets[ticketId] = true;
 
         _mintToUser(recipient, ticketToTokenId(ticketId));
-    }
-
-    function redeemTicket(
-        address recipient,
-        uint256 ticketId,
-        bytes memory signature
-    ) external {
-        // This is a short-cut for avoiding double claiming tickets.
-        require(!claimedTickets[ticketId], "TempusSers: Ticket already claimed");
-        require(ticketId > 0 && ticketId <= MAX_SUPPLY, "TempusSers: Invalid ticket id");
-
-        // Check validity of claim
-        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(CLAIMSER_TYPEHASH, recipient, ticketId)));
-        require(SignatureChecker.isValidSignatureNow(owner(), digest, signature), "TempusSers: Invalid signature");
-
-        // Claim ticket.
-        claimedTickets[ticketId] = true;
-
-        uint256 tokenId = ticketToTokenId(ticketId);
-
-        _mintToUser(recipient, tokenId);
     }
 
     function _mintToUser(address recipient, uint256 tokenId) private {

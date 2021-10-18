@@ -162,30 +162,6 @@ describe("Tempus Sers", async () => {
     return token.proveTicket(recipient, ticketId, proof);
   }
 
-  async function redeemTicket(signer, recipient, ticketId): Promise<void> {
-    const domain = {
-      name: 'Tempus Sers',
-      version: '1',
-      chainId: await signer.getChainId(),
-      verifyingContract: token.address
-    };
-
-    const types = {
-      ClaimSer: [
-        { name: 'recipient', type: 'address' },
-        { name: 'ticketId', type: 'uint256' }
-      ]
-    };
-
-    const value = {
-       recipient,
-       ticketId
-    };
-
-    const signature = await signer._signTypedData(domain, types, value);
-    return token.redeemTicket(recipient, ticketId, signature);
-  };
-
   describe("Deploy", async () =>
   {
     it("Should set the right owner and initial supply", async () =>
@@ -254,104 +230,6 @@ describe("Tempus Sers", async () => {
       // expect((await token.ticketToTokenId(BigNumber.from(1))).toString()).to.equal("8984");
       await token.ticketToTokenId(BigNumber.from(1));
     });
-  });
-
-  describe("Redeem", async () =>
-  {
-    it("Should fail with short signature", async () =>
-    {
-      const ticketId = 1;
-      const tokenId = 5;
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(token.redeemTicket(user.address, ticketId, 0))).to.equal("TempusSers: Invalid signature");
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      expect(await token.originalMinter(tokenId)).to.equal("0x0000000000000000000000000000000000000000");
-    });
-
-    it("Should fail with invalid signature", async () =>
-    {
-      const sig = "0x161c1cce058d3862a7ca0c331729d7b181d282be5c546a122f4eeab0c285aa072f81d40bb17a1504590ca524840498804554b7c907a8493674f968d20dcf7d421c";
-      const ticketId = 1;
-      const tokenId = 5;
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(token.redeemTicket(user.address, ticketId, sig))).to.equal("TempusSers: Invalid signature");
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      expect(await token.originalMinter(tokenId)).to.equal("0x0000000000000000000000000000000000000000");
-    });
-
-    it("Should fail before seed is set", async () =>
-    {
-      const ticketId = 1;
-      const tokenId = 0; // Can't use ticketToTokenId here and this will be wrong anyway
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId))).to.equal("TempusSers: Seed not set yet");
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      expect(await token.originalMinter(tokenId)).to.equal("0x0000000000000000000000000000000000000000");
-    });
-
-    it("Should fail redeeming twice", async () =>
-    {
-      await token.setSeed();
-      const ticketId = 1;
-      const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      await redeemTicket(owner, user.address, ticketId);
-      expect(await token.claimedTickets(ticketId)).to.equal(true);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId))).to.equal("TempusSers: Ticket already claimed");
-      expect(await token.claimedTickets(ticketId)).to.equal(true);
-    });
-
-    it("Should succeed with correct signature", async () =>
-    {
-      await token.setSeed();
-      const ticketId = 1;
-      const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
-      const tokenURI = (await token.baseTokenURI()) + tokenId + ".json";
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      // Transfer(0, to, tokenId);
-      expect(await redeemTicket(owner, user.address, ticketId))
-        .to.emit(token, "Transfer").withArgs("0x0000000000000000000000000000000000000000", user.address, tokenId)
-        .to.emit(token, "PermanentURI").withArgs(tokenURI, tokenId);
-      expect(await token.claimedTickets(ticketId)).to.equal(true);
-      expect(await token.originalMinter(tokenId)).to.equal(user.address);
-    });
-
-    it("Should fail with invalid ticket id (0)", async () =>
-    {
-      await token.setSeed();
-
-      const ticketId = 0;
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId))).to.equal("TempusSers: Invalid ticket id");
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-    });
-
-    it("Should fail with invalid ticket id (>maxSupply)", async () =>
-    {
-      await token.setSeed();
-
-      const maxSupply = await token.MAX_SUPPLY();
-      const ticketId = maxSupply + 1;
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId))).to.equal("TempusSers: Invalid ticket id");
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-    });
-
-    it("Should work with redeeming all tickets", async () => {
-      await token.setSeed();
-      const maxSupply = await token.MAX_SUPPLY();
-      for (let ticketId = 1; ticketId <= maxSupply; ticketId++) {
-        const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
-        const tokenURI = (await token.baseTokenURI()) + tokenId + ".json";
-        expect(await token.claimedTickets(ticketId)).to.equal(false);
-        // Transfer(0, to, tokenId);
-        expect(await redeemTicket(owner, user.address, ticketId))
-          .to.emit(token, "Transfer").withArgs("0x0000000000000000000000000000000000000000", user.address, tokenId)
-          .to.emit(token, "PermanentURI").withArgs(tokenURI, tokenId);
-        expect(await token.claimedTickets(ticketId)).to.equal(true);
-        expect(await token.originalMinter(tokenId)).to.equal(user.address);
-      }
-    }).timeout(300000);
   });
 
   describe("Prove", async () =>

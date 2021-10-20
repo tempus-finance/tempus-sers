@@ -5,6 +5,7 @@ import * as signers from "@nomiclabs/hardhat-ethers/dist/src/signers";
 import { solidity } from "ethereum-waffle";
 import { MerkleTree } from "merkletreejs";
 import * as keccak256 from "keccak256";
+import assert = require("assert");
 
 /**
  * Insert helpers for event matching.
@@ -189,6 +190,19 @@ describe("Tempus Sers", async () => {
     await token.addBatch(defaultBatch, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/", 1111, claimList[defaultBatch].getRoot(), claimList[defaultBatch].getBatchProof());
   });
 
+  async function addBatch(batch:number, supply:number, baseTokenURI:string, count:number): Promise<void> {
+    const meta = {
+      batch: batch,
+      supply: supply,
+      baseTokenURI: baseTokenURI
+    };
+    const list = ClaimList.generate(count, meta);
+    claimList.push(list);
+    assert(claimList[batch] == list); // Ensure it was inserted at the correct location.
+
+    return token.addBatch(batch, baseTokenURI, supply, list.getRoot(), list.getBatchProof());
+  }
+
   async function proveTicket(batch:number, recipient:string, ticketId:number): Promise<void> {
     const proof = claimList[batch].getProof(recipient, ticketId);
     return token.proveTicket(batch, recipient, ticketId, proof);
@@ -300,6 +314,7 @@ describe("Tempus Sers", async () => {
       expect(await token.originalMinter(tokenId)).to.equal(recipient);
     });
 
+/*
     it("Should allow claiming all addresses", async () =>
     {
       await token.setSeed(defaultBatch);
@@ -325,5 +340,42 @@ describe("Tempus Sers", async () => {
         expect(await token.originalMinter(tokenId)).to.equal(recipient);
       };
     }).timeout(300000);
+*/
+
+    it("Should succeed with correct proof from multiple batches", async () =>
+    {
+      await token.setSeed(defaultBatch);
+      await addBatch(1, 555, "ipfs://none", 100);
+      await token.setSeed(1);
+
+      {
+      const recipient = "0x1000000000000000000000000000000000000001";
+      const ticketId = 1;
+      const tokenId = await token.ticketToTokenId(defaultBatch, BigNumber.from(ticketId));
+      const tokenURI = (await token.baseTokenURIs(defaultBatch)) + tokenId + ".json";
+      expect(await token.claimedTickets(defaultBatch, ticketId)).to.equal(false);
+      // Transfer(0, to, tokenId);
+      expect(await proveTicket(defaultBatch, recipient, ticketId))
+        .to.emit(token, "Transfer").withArgs("0x0000000000000000000000000000000000000000", recipient, tokenId)
+        .to.emit(token, "PermanentURI").withArgs(tokenURI, tokenId);
+      expect(await token.claimedTickets(defaultBatch, ticketId)).to.equal(true);
+      expect(await token.originalMinter(tokenId)).to.equal(recipient);
+      }
+
+      {
+      const batch = 1;
+      const recipient = "0x1000000000000000000000000000000000000002";
+      const ticketId = 2;
+      const tokenId = await token.ticketToTokenId(batch, BigNumber.from(ticketId));
+      const tokenURI = (await token.baseTokenURIs(batch)) + tokenId + ".json";
+      expect(await token.claimedTickets(batch, ticketId)).to.equal(false);
+      // Transfer(0, to, tokenId);
+      expect(await proveTicket(batch, recipient, ticketId))
+        .to.emit(token, "Transfer").withArgs("0x0000000000000000000000000000000000000000", recipient, tokenId)
+        .to.emit(token, "PermanentURI").withArgs(tokenURI, tokenId);
+      expect(await token.claimedTickets(batch, ticketId)).to.equal(true);
+      expect(await token.originalMinter(tokenId)).to.equal(recipient);
+      }
+    });
   });
 });

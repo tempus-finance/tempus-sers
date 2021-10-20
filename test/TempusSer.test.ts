@@ -84,6 +84,12 @@ describe("Shuffle", async () => {
   });
 });
 
+interface ClaimListMeta {
+  batch:number;
+  supply:number;
+  baseTokenURI:string;
+}
+
 interface Claim {
   recipient:string;
   ticketId:number;
@@ -92,8 +98,11 @@ interface Claim {
 class ClaimList {
   list:Array<Claim>;
   tree:MerkleTree;
+  meta:ClaimListMeta;
 
-  constructor(addresses:Array<string>) {
+  constructor(addresses:Array<string>, meta:ClaimListMeta) {
+    this.meta = meta;
+
     // Take the addresses and assign a ticketId to them (from the range of 1..n).
     this.list = addresses.map((e, i) => {
       return { recipient: e, ticketId: i + 1};
@@ -101,14 +110,19 @@ class ClaimList {
 
     // Create the merkle tree.
     const leaves = this.list.map((e) => {
-      return this.encodeLeaf(e.recipient, e.ticketId);
+      return this.encodeLeaf(meta.batch, e.recipient, e.ticketId);
     });
+
+    // Create the verification entry.
+    const uriHash = ethersUtils.keccak256(ethersUtils.defaultAbiCoder.encode([ "uint256", "string" ], [ meta.supply, meta.baseTokenURI ]));
+    leaves.push(this.encodeLeaf(meta.batch, "0x0000000000000000000000000000000000000000", uriHash));
+
     this.tree = new MerkleTree(leaves, keccak256, { hashLeaves: false, sortPairs: true });
   }
 
   // Preprocess a single tree element. ABI encoding is important here as the contract must do the same.
-  encodeLeaf(recipient, ticketId) {
-    return ethersUtils.keccak256(ethersUtils.defaultAbiCoder.encode([ "address", "uint256" ], [ recipient, ticketId ]));
+  encodeLeaf(batch, recipient, ticketId) {
+    return ethersUtils.keccak256(ethersUtils.defaultAbiCoder.encode([ "uint256", "address", "uint256" ], [ batch, recipient, ticketId ]));
   }
 
   // Get the merkle root.
@@ -118,7 +132,13 @@ class ClaimList {
 
   // Create a proof for a given recipient/ticketId combination. Does not validate it is part of the tree.
   public getProof(recipient:string, ticketId:number): Array<string> {
-    return this.tree.getHexProof(this.encodeLeaf(recipient, ticketId));
+    return this.tree.getHexProof(this.encodeLeaf(this.meta.batch, recipient, ticketId));
+  }
+
+  // Create the proof for a given batch.
+  public getBatchProof(): Array<string> {
+    const uriHash = ethersUtils.keccak256(ethersUtils.defaultAbiCoder.encode([ "uint256", "string" ], [ this.meta.supply, this.meta.baseTokenURI ]));
+    return this.tree.getHexProof(this.encodeLeaf(this.meta.batch, "0x0000000000000000000000000000000000000000", uriHash));
   }
 
   // Returns the list of all possible claims.
@@ -127,7 +147,7 @@ class ClaimList {
   }
 
   // Helper function for testing. Generates a list of claims.
-  static generate(count:number): ClaimList {
+  static generate(count:number, meta:ClaimListMeta): ClaimList {
     let addresses = [];
     for (let i = 1; i <= count; i++) {
       // Here we generate addresses in the form of 0x100000000000000000000000000000000000nnnn
@@ -136,30 +156,42 @@ class ClaimList {
       let checksummedAddress = ethersUtils.getAddress(address.toHexString());
       addresses.push(checksummedAddress);
     }
-    return new ClaimList(addresses);
+    return new ClaimList(addresses, meta);
   }
 }
 
 describe("Tempus Sers", async () => {
   let owner:Signer, user:Signer;
   let token;
-  let claimList:ClaimList;
+  let claimList:Array<ClaimList>;
+  const defaultBatch = 0;
 
   before(async () => {
-    claimList = ClaimList.generate(1111);
+    const meta = {
+      batch: defaultBatch,
+      supply: 1111,
+      baseTokenURI: "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/"
+    };
+
+    // This will insert to claimList[0]
+    claimList = [];
+    claimList.push(ClaimList.generate(1111, meta));
   });
 
   beforeEach(async () => {
     [owner, user] = await ethers.getSigners();
 
     const TempusSers = await ethers.getContractFactory("TempusSers");
-    token = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/", claimList.getRoot());
+    token = await TempusSers.deploy();
     await token.deployed();
+
+    // TODO: test addBatch comprehensively
+    await token.addBatch(defaultBatch, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/", 1111, claimList[defaultBatch].getRoot(), claimList[defaultBatch].getBatchProof());
   });
 
-  async function proveTicket(recipient:string, ticketId:number): Promise<void> {
-    const proof = claimList.getProof(recipient, ticketId);
-    return token.proveTicket(recipient, ticketId, proof);
+  async function proveTicket(batch:number, recipient:string, ticketId:number): Promise<void> {
+    const proof = claimList[batch].getProof(recipient, ticketId);
+    return token.proveTicket(batch, recipient, ticketId, proof);
   }
 
   describe("Deploy", async () =>
@@ -180,22 +212,39 @@ describe("Tempus Sers", async () => {
     it("Should set initial properties", async () =>
     {
       expect((await token.MAX_SUPPLY()).toString()).to.equal("3333");
-      expect(await token.shuffleSeed()).to.equal(0);
-      expect(await token.baseTokenURI()).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      expect(await token.shuffleSeeds(defaultBatch)).to.equal(0);
+      expect(await token.baseTokenURIs(defaultBatch)).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     });
 
     it("Should sanitize base URI", async () =>
     {
+      const meta = {
+        batch: 0,
+        supply: 1111,
+        baseTokenURI: "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs"
+      };
+      const claimList = ClaimList.generate(1111, meta);
+
       const TempusSers = await ethers.getContractFactory("TempusSers");
-      let token2 = await TempusSers.deploy("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs", claimList.getRoot());
+      let token2 = await TempusSers.deploy();
       await token2.deployed();
-      expect(await token2.baseTokenURI()).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      await token2.addBatch(0, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs", 1111, claimList.getRoot(), claimList.getBatchProof());
+      expect(await token2.baseTokenURIs(0)).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     });
 
     it("Should fail on empy base URI", async () =>
     {
+      const meta = {
+        batch: 0,
+        supply: 1111,
+        baseTokenURI: ""
+      };
+      const claimList = ClaimList.generate(1111, meta);
+
       const TempusSers = await ethers.getContractFactory("TempusSers");
-      (await expectRevert(TempusSers.deploy("", claimList.getRoot()))).to.equal("TempusSers: URI cannot be empty");
+      let token2 = await TempusSers.deploy();
+      await token2.deployed();
+      (await expectRevert(token2.addBatch(0, "", 1111, claimList.getRoot(), claimList.getBatchProof()))).to.equal("TempusSers: URI cannot be empty");
     });
   });
 
@@ -208,27 +257,27 @@ describe("Tempus Sers", async () => {
       // being 0 again, that means setSeed can be called again.
       //
       // For testing purposes we assume the probability of this is low.
-      const prevSeed = await token.shuffleSeed();
+      const prevSeed = await token.shuffleSeeds(defaultBatch);
       expect(prevSeed).to.equal(0);
-      await token.setSeed();
-      expect(await token.shuffleSeed()).to.not.equal(prevSeed);
+      await token.setSeed(defaultBatch);
+      expect(await token.shuffleSeeds(defaultBatch)).to.not.equal(prevSeed);
     });
     it("Should allow to set seed once", async () =>
     {
       // NOTE: The same conditions apply here as above.
-      await token.setSeed();
-      (await expectRevert(token.setSeed())).to.equal("TempusSers: Seed already set");
+      await token.setSeed(defaultBatch);
+      (await expectRevert(token.setSeed(defaultBatch))).to.equal("TempusSers: Seed already set");
     });
     it("Should not allow to shuffle before seed is set", async () =>
     {
-      (await expectRevert(token.ticketToTokenId(BigNumber.from(1)))).to.equal("TempusSers: Seed not set yet");
+      (await expectRevert(token.ticketToTokenId(defaultBatch, BigNumber.from(1)))).to.equal("TempusSers: Seed not set yet");
     });
     it("Should allow to shuffle after seed is set", async () =>
     {
-      await token.setSeed();
+      await token.setSeed(defaultBatch);
       // Can't actually check the value due to the seed (blockhash) differs between runs
       // expect((await token.ticketToTokenId(BigNumber.from(1))).toString()).to.equal("8984");
-      await token.ticketToTokenId(BigNumber.from(1));
+      await token.ticketToTokenId(defaultBatch, BigNumber.from(1));
     });
   });
 
@@ -236,26 +285,27 @@ describe("Tempus Sers", async () => {
   {
     it("Should succeed with correct proof", async () =>
     {
-      await token.setSeed();
+      await token.setSeed(defaultBatch);
+
       const recipient = "0x1000000000000000000000000000000000000001";
       const ticketId = 1;
-      const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
-      const tokenURI = (await token.baseTokenURI()) + tokenId + ".json";
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
+      const tokenId = await token.ticketToTokenId(defaultBatch, BigNumber.from(ticketId));
+      const tokenURI = (await token.baseTokenURIs(defaultBatch)) + tokenId + ".json";
+      expect(await token.claimedTickets(defaultBatch, ticketId)).to.equal(false);
       // Transfer(0, to, tokenId);
-      expect(await proveTicket(recipient, ticketId))
+      expect(await proveTicket(defaultBatch, recipient, ticketId))
         .to.emit(token, "Transfer").withArgs("0x0000000000000000000000000000000000000000", recipient, tokenId)
         .to.emit(token, "PermanentURI").withArgs(tokenURI, tokenId);
-      expect(await token.claimedTickets(ticketId)).to.equal(true);
+      expect(await token.claimedTickets(defaultBatch, ticketId)).to.equal(true);
       expect(await token.originalMinter(tokenId)).to.equal(recipient);
     });
 
     it("Should allow claiming all addresses", async () =>
     {
-      await token.setSeed();
+      await token.setSeed(defaultBatch);
       const maxSupply = await token.MAX_SUPPLY();
 
-      const claims = claimList.getList();
+      const claims = claimList[defaultBatch].getList();
       for (let i = 0; i < claims.length; i++) {
         if ((i + 1) > maxSupply) {
           // Sanity check.
@@ -264,14 +314,14 @@ describe("Tempus Sers", async () => {
         const recipient = claims[i].recipient;
         const ticketId = claims[i].ticketId;
 
-        const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
-        const tokenURI = (await token.baseTokenURI()) + tokenId + ".json";
-        expect(await token.claimedTickets(ticketId)).to.equal(false);
+        const tokenId = await token.ticketToTokenId(defaultBatch, BigNumber.from(ticketId));
+        const tokenURI = (await token.baseTokenURIs(defaultBatch)) + tokenId + ".json";
+        expect(await token.claimedTickets(defaultBatch, ticketId)).to.equal(false);
         // Transfer(0, to, tokenId);
-        expect(await proveTicket(recipient, ticketId))
+        expect(await proveTicket(defaultBatch, recipient, ticketId))
           .to.emit(token, "Transfer").withArgs("0x0000000000000000000000000000000000000000", recipient, tokenId)
           .to.emit(token, "PermanentURI").withArgs(tokenURI, tokenId);
-        expect(await token.claimedTickets(ticketId)).to.equal(true);
+        expect(await token.claimedTickets(defaultBatch, ticketId)).to.equal(true);
         expect(await token.originalMinter(tokenId)).to.equal(recipient);
       };
     }).timeout(300000);

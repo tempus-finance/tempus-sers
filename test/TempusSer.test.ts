@@ -80,12 +80,14 @@ describe("Tempus Sers", async () => {
   beforeEach(async () => {
     [owner, user] = await ethers.getSigners();
     const TempusSers = await ethers.getContractFactory("TempusSers");
-    token = await TempusSers.deploy(utils.id("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/"));
+    token = await TempusSers.deploy();
     await token.deployed();
+    // TODO: test addBatch
+    await token.addBatch(0, utils.id("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/"), 1111);
   });
 
 
-  async function redeemTicket(signer, recipient, ticketId): Promise<void> {
+  async function redeemTicket(signer, recipient, batch, ticketId): Promise<void> {
     const domain = {
       name: 'Tempus Sers',
       version: '1',
@@ -96,17 +98,19 @@ describe("Tempus Sers", async () => {
     const types = {
       ClaimSer: [
         { name: 'recipient', type: 'address' },
+        { name: 'batch', type: 'uint256' },
         { name: 'ticketId', type: 'uint256' }
       ]
     };
 
     const value = {
        recipient,
+       batch,
        ticketId
     };
 
     const signature = await signer._signTypedData(domain, types, value);
-    return token.redeemTicket(recipient, ticketId, signature);
+    return token.redeemTicket(recipient, batch, ticketId, signature);
   };
 
   describe("Deploy", async () =>
@@ -127,8 +131,8 @@ describe("Tempus Sers", async () => {
     it("Should set initial properties", async () =>
     {
       expect((await token.MAX_SUPPLY()).toString()).to.equal("3333");
-      expect(await token.shuffleSeed()).to.equal(0);
-      expect(await token.baseTokenURI()).to.equal("");
+      expect(await token.shuffleSeeds(0)).to.equal(0);
+      expect(await token.baseTokenURIs(0)).to.equal("");
     });
   });
 
@@ -136,40 +140,37 @@ describe("Tempus Sers", async () => {
   {
     it("Cannot reveal before seed is set", async () =>
     {
-      (await expectRevert(token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/"))).to.equal("TempusSers: Seed not set yet");
+      (await expectRevert(token.revealBatch(0, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/"))).to.equal("TempusSers: Seed not set yet");
     });
     it("Reveal first works", async () =>
     {
-      await token.setSeed();
-      await token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
-      expect(await token.baseTokenURI()).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      await token.setSeed(0);
+      await token.revealBatch(0, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      expect(await token.baseTokenURIs(0)).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     });
     it("Should sanitize base URI", async () =>
     {
-      const TempusSers = await ethers.getContractFactory("TempusSers");
-      let token2 = await TempusSers.deploy(utils.id("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs"));
-      await token2.deployed();
-      await token2.setSeed();
-      await token2.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs");
-      expect(await token2.baseTokenURI()).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      await token.addBatch(1, utils.id("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs"), 100);
+      await token.setSeed(1);
+      await token.revealBatch(1, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs");
+      expect(await token.baseTokenURIs(1)).to.equal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
     });
 
     it("Should fail on empy base URI", async () =>
     {
-      const TempusSers = await ethers.getContractFactory("TempusSers");
-      (await expectRevert(TempusSers.deploy("0x0000000000000000000000000000000000000000000000000000000000000000"))).to.equal("TempusSers: URI cannot be empty");
-      (await expectRevert(TempusSers.deploy(utils.id("")))).to.equal("TempusSers: URI cannot be empty");
+      (await expectRevert(token.addBatch(1, "0x0000000000000000000000000000000000000000000000000000000000000000", 100))).to.equal("TempusSers: URI cannot be empty");
+      (await expectRevert(token.addBatch(1, utils.id(""), 100))).to.equal("TempusSers: URI cannot be empty");
     });
     it("Cannot reveal multiple times", async () =>
     {
-      await token.setSeed();
-      await token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
-      (await expectRevert(token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/"))).to.equal("TempusSers: Collection already revealed");
+      await token.setSeed(0);
+      await token.revealBatch(0, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      (await expectRevert(token.revealBatch(0, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/"))).to.equal("TempusSers: Collection already revealed");
     });
     it("Cannot reveal with mismatching URI", async () =>
     {
-      await token.setSeed();
-      (await expectRevert(token.reveal("ipfs://wrongurl.com/"))).to.equal("TempusSers: Commitment mismatch");
+      await token.setSeed(0);
+      (await expectRevert(token.revealBatch(0, "ipfs://wrongurl.com/"))).to.equal("TempusSers: Commitment mismatch");
     });
   });
 
@@ -182,27 +183,27 @@ describe("Tempus Sers", async () => {
       // being 0 again, that means setSeed can be called again.
       //
       // For testing purposes we assume the probability of this is low.
-      const prevSeed = await token.shuffleSeed();
+      const prevSeed = await token.shuffleSeeds(0);
       expect(prevSeed).to.equal(0);
-      await token.setSeed();
-      expect(await token.shuffleSeed()).to.not.equal(prevSeed);
+      await token.setSeed(0);
+      expect(await token.shuffleSeeds(0)).to.not.equal(prevSeed);
     });
     it("Should allow to set seed once", async () =>
     {
       // NOTE: The same conditions apply here as above.
-      await token.setSeed();
-      (await expectRevert(token.setSeed())).to.equal("TempusSers: Seed already set");
+      await token.setSeed(0);
+      (await expectRevert(token.setSeed(0))).to.equal("TempusSers: Seed already set");
     });
     it("Should not allow to shuffle before seed is set", async () =>
     {
-      (await expectRevert(token.ticketToTokenId(BigNumber.from(1)))).to.equal("TempusSers: Seed not set yet");
+      (await expectRevert(token.ticketToTokenId(0, BigNumber.from(1)))).to.equal("TempusSers: Seed not set yet");
     });
     it("Should allow to shuffle after seed is set", async () =>
     {
-      await token.setSeed();
+      await token.setSeed(0);
       // Can't actually check the value due to the seed (blockhash) differs between runs
-      // expect((await token.ticketToTokenId(BigNumber.from(1))).toString()).to.equal("8984");
-      await token.ticketToTokenId(BigNumber.from(1));
+      // expect((await token.ticketToTokend(BigNumber.from(1))).toString()).to.equal("8984");
+      await token.ticketToTokenId(0, BigNumber.from(1));
     });
   });
 
@@ -210,27 +211,27 @@ describe("Tempus Sers", async () => {
   {
     it("Should fail with short signature", async () =>
     {
-      await token.setSeed();
-      await token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      await token.setSeed(0);
+      await token.revealBatch(0, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
 
       const ticketId = 1;
       const tokenId = 5;
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(token.redeemTicket(user.address, ticketId, 0))).to.equal("TempusSers: Invalid signature");
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
+      expect(await token.claimedTickets(0, ticketId)).to.equal(false);
+      (await expectRevert(token.redeemTicket(user.address, 0, ticketId, 0))).to.equal("TempusSers: Invalid signature");
+      expect(await token.claimedTickets(0, ticketId)).to.equal(false);
       expect(await token.originalMinter(tokenId)).to.equal("0x0000000000000000000000000000000000000000");
     });
     it("Should fail with invalid signature", async () =>
     {
-      await token.setSeed();
-      await token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      await token.setSeed(0);
+      await token.revealBatch(0, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
 
       const sig = "0x161c1cce058d3862a7ca0c331729d7b181d282be5c546a122f4eeab0c285aa072f81d40bb17a1504590ca524840498804554b7c907a8493674f968d20dcf7d421c";
       const ticketId = 1;
       const tokenId = 5;
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(token.redeemTicket(user.address, ticketId, sig))).to.equal("TempusSers: Invalid signature");
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
+      expect(await token.claimedTickets(0, ticketId)).to.equal(false);
+      (await expectRevert(token.redeemTicket(user.address, 0, ticketId, sig))).to.equal("TempusSers: Invalid signature");
+      expect(await token.claimedTickets(0, ticketId)).to.equal(false);
       expect(await token.originalMinter(tokenId)).to.equal("0x0000000000000000000000000000000000000000");
     });
     it("Should fail before seed", async () =>
@@ -239,50 +240,50 @@ describe("Tempus Sers", async () => {
 
       const ticketId = 1;
       const tokenId = 0; // Can't use ticketToTokenId here and this will be wrong anyway
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId))).to.equal("TempusSers: Collection not revealed yet");
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
+      expect(await token.claimedTickets(0, ticketId)).to.equal(false);
+      (await expectRevert(redeemTicket(owner, user.address, 0, ticketId))).to.equal("TempusSers: Collection not revealed yet");
+      expect(await token.claimedTickets(0, ticketId)).to.equal(false);
       expect(await token.originalMinter(tokenId)).to.equal("0x0000000000000000000000000000000000000000");
     });
     it("Should fail before reveal", async () =>
     {
-      await token.setSeed();
+      await token.setSeed(0);
       // Skip reveal here.
 
       const ticketId = 1;
       const tokenId = 0; // Can't use ticketToTokenId here and this will be wrong anyway
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId))).to.equal("TempusSers: Collection not revealed yet");
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
+      expect(await token.claimedTickets(0, ticketId)).to.equal(false);
+      (await expectRevert(redeemTicket(owner, user.address, 0, ticketId))).to.equal("TempusSers: Collection not revealed yet");
+      expect(await token.claimedTickets(0, ticketId)).to.equal(false);
       expect(await token.originalMinter(tokenId)).to.equal("0x0000000000000000000000000000000000000000");
     });
     it("Should fail redeeming twice", async () =>
     {
-      await token.setSeed();
-      await token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      await token.setSeed(0);
+      await token.revealBatch(0, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
 
       const ticketId = 1;
-      const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
-      await redeemTicket(owner, user.address, ticketId);
-      expect(await token.claimedTickets(ticketId)).to.equal(true);
-      (await expectRevert(redeemTicket(owner, user.address, ticketId))).to.equal("TempusSers: Ticket already claimed");
-      expect(await token.claimedTickets(ticketId)).to.equal(true);
+      const tokenId = await token.ticketToTokenId(0, BigNumber.from(ticketId));
+      expect(await token.claimedTickets(0, ticketId)).to.equal(false);
+      await redeemTicket(owner, user.address, 0, ticketId);
+      expect(await token.claimedTickets(0, ticketId)).to.equal(true);
+      (await expectRevert(redeemTicket(owner, user.address, 0, ticketId))).to.equal("TempusSers: Ticket already claimed");
+      expect(await token.claimedTickets(0, ticketId)).to.equal(true);
     });
     it("Should succeed with correct signature", async () =>
     {
-      await token.setSeed();
-      await token.reveal("ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
+      await token.setSeed(0);
+      await token.revealBatch(0, "ipfs://Qmd6FJksU1TaRkVhTiDZLqG4yi4Hg5NCXFD6QiF9zEgZSs/");
 
       const ticketId = 1;
-      const tokenId = await token.ticketToTokenId(BigNumber.from(ticketId));
-      const tokenURI = (await token.baseTokenURI()) + tokenId + ".json";
-      expect(await token.claimedTickets(ticketId)).to.equal(false);
+      const tokenId = await token.ticketToTokenId(0, BigNumber.from(ticketId));
+      const tokenURI = (await token.baseTokenURIs(0)) + tokenId + ".json";
+      expect(await token.claimedTickets(0, ticketId)).to.equal(false);
       // Transfer(0, to, tokenId);
-      expect(await redeemTicket(owner, user.address, ticketId))
+      expect(await redeemTicket(owner, user.address, 0, ticketId))
         .to.emit(token, "Transfer").withArgs("0x0000000000000000000000000000000000000000", user.address, tokenId)
         .to.emit(token, "PermanentURI").withArgs(tokenURI, tokenId);
-      expect(await token.claimedTickets(ticketId)).to.equal(true);
+      expect(await token.claimedTickets(0, ticketId)).to.equal(true);
       expect(await token.originalMinter(tokenId)).to.equal(user.address);
     });
   });

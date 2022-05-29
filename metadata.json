@@ -1,0 +1,51 @@
+{
+  "description": "A Rare Tempus Ser",
+  "image": "1.png",
+  "name": "Comatose Cyborg Ser",
+  "attributes": [
+    {
+      "trait_type": "Background",
+      "value": "Disco"
+    },
+    {
+      "trait_type": "Skin",
+      "value": "Alien"
+    },
+    {
+      "trait_type": "Headwear",
+      "value": "Tall tophat"
+    },
+    {
+      "trait_type": "Eyeawear",
+      "value": "Pink cyborg eye"
+    },
+    {
+      "trait_type": "Mouth",
+      "value": "Beard"
+    },
+    {
+      "trait_type": "Left Arm",
+      "value": "Cane"
+    },
+    {
+      "trait_type": "Right Arm",
+      "value": "Bat"
+    },
+    {
+      "trait_type": "Both Arms",
+      "value": "Muscular"
+    },
+    {
+      "trait_type": "Torso",
+      "value": "Tuxedo"
+    },
+    {
+      "trait_type": "Pants",
+      "value": "Jeans"
+    },
+    {
+      "trait_type": "Shoes",
+      "value": "Moccasins"
+    },
+  ],
+}
